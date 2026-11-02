@@ -59,6 +59,17 @@ const BEAT_KEYS: [string, string][] = [
   ['Esc', 'Exit']
 ]
 
+const HYPNO_KEYS: [string, string][] = [
+  ['Space', 'Pause / resume'],
+  ['→', 'Next snippet'],
+  ['1 / 2 / 3', 'Linger / Flash / Strobe'],
+  ['M', 'Mute'],
+  ['↑ / ↓', 'Volume'],
+  ['C', 'Webcam on / off'],
+  ['R', 'Start / stop recording'],
+  ['Esc', 'Exit']
+]
+
 const PIXEL_KEYS: [string, string][] = [
   ['Space', 'Pause / resume'],
   ['← / →', 'Previous / next video'],
@@ -163,6 +174,7 @@ export function Settings({ onClose }: SettingsProps) {
           <KeyTable title="Scroller" rows={SCROLLER_KEYS} />
           <KeyTable title="Beat Bar" rows={BEAT_KEYS} />
           <KeyTable title="Pixel Perfection" rows={PIXEL_KEYS} />
+          <KeyTable title="Hypno Station" rows={HYPNO_KEYS} />
           <KeyTable title="Trimmer" rows={TRIMMER_KEYS} />
           <KeyTable title="Time Dilation" rows={DILATION_KEYS} />
           <KeyTable title="Goon Image Format" rows={GIF_KEYS} />

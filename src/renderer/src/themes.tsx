@@ -88,6 +88,7 @@ export interface ThemeCopy {
   scroller: string
   queue: string
   pixelPerfection: string
+  hypnoStation: string
   utilitiesHeading: string
   trimmer: string
   timeDilation: string
@@ -107,6 +108,7 @@ export interface ThemeIcons {
   scroller: Icon
   queue: Icon
   pixelPerfection: Icon
+  hypnoStation: Icon
   trimmer: Icon
   timeDilation: Icon
   goonImageFormat: Icon
@@ -144,6 +146,7 @@ const DEFAULT_COPY: ThemeCopy = {
   scroller: 'Scroller',
   queue: 'Beat Bar',
   pixelPerfection: 'Pixel Perfection',
+  hypnoStation: 'Hypno Station',
   utilitiesHeading: 'Utilities',
   trimmer: 'Trimmer',
   timeDilation: 'Time Dilation',
@@ -163,6 +166,7 @@ const DEFAULT_ICONS: ThemeIcons = {
   scroller: Clapperboard,
   queue: ListVideo,
   pixelPerfection: Grid3x3,
+  hypnoStation: HypnoSpiral,
   trimmer: Scissors,
   timeDilation: Clock,
   goonImageFormat: Image
@@ -346,6 +350,7 @@ export const THEMES: Theme[] = [
       untaggedHint: 'Keep adding triggers. This file stays until you drift to another.',
       queue: 'Trance Beat Bar',
       scroller: 'Go deeper',
+      hypnoStation: 'Hypno Station',
       tagsHeading: 'Triggers',
       tagsEmpty: 'Triggers you add to media will float up here.',
       searchPlaceholder: 'Let your mind search…',

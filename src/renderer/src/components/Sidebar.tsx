@@ -21,6 +21,7 @@ interface SidebarProps {
   onOpenScroller: () => void
   onOpenQueue: () => void
   onOpenPixel: () => void
+  onOpenHypno: () => void
   onOpenTrimmer: () => void
   onOpenTimeDilation: () => void
   onOpenGif: () => void
@@ -43,6 +44,7 @@ export function Sidebar(props: SidebarProps) {
     scroller: ScrollerIcon,
     queue: QueueIcon,
     pixelPerfection: PixelIcon,
+    hypnoStation: HypnoIcon,
     trimmer: TrimmerIcon,
     timeDilation: DilationIcon,
     goonImageFormat: GifIcon
@@ -105,6 +107,10 @@ export function Sidebar(props: SidebarProps) {
           <PixelIcon size={16} />
           <span className="nav-label">{copy.pixelPerfection}</span>
           <span className="lab-experimental">Experimental</span>
+        </button>
+        <button className="nav-item" onClick={props.onOpenHypno}>
+          <HypnoIcon size={16} />
+          <span className="nav-label">{copy.hypnoStation}</span>
         </button>
         {props.previewsPending > 0 && (
           <div

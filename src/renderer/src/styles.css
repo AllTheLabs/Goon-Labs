@@ -1478,6 +1478,10 @@ p {
 .queue-player .lab-cam.bottom-right {
   bottom: 108px;
 }
+.hypno-player .lab-cam.bottom-left,
+.hypno-player .lab-cam.bottom-right {
+  bottom: 16px;
+}
 .queue-player .lab-cam.top-left,
 .queue-player .lab-cam.top-right {
   top: 78px;
@@ -2096,6 +2100,56 @@ button.queue-row:hover .queue-row-add {
   opacity: 0;
   background: radial-gradient(circle at 50% 50%, transparent 35%, var(--accent) 120%);
   mix-blend-mode: screen;
+}
+.hypno-video {
+  opacity: 0;
+  z-index: 0;
+  transition: none;
+}
+.hypno-video.active {
+  opacity: 1;
+  z-index: 1;
+}
+.hypno-hue {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  opacity: 0.38;
+  background: #ff4d9a;
+  animation: hypno-hue 16s linear infinite;
+}
+.hypno-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 50%, transparent 42%, rgba(20, 0, 28, 0.72) 100%);
+}
+.hypno-flash {
+  z-index: 4;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 120, 200, 0.55) 0%, transparent 62%);
+}
+@keyframes hypno-hue {
+  0% {
+    background: #ff4d9a;
+  }
+  20% {
+    background: #ff2eb8;
+  }
+  40% {
+    background: #e040fb;
+  }
+  60% {
+    background: #b44aff;
+  }
+  80% {
+    background: #8a4dff;
+  }
+  100% {
+    background: #ff4d9a;
+  }
 }
 .queue-controls {
   top: 20px;

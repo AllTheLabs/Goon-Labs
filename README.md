@@ -60,6 +60,12 @@ Queue videos, then play them one at a time. A beat bar pulses along the bottom. 
 
 Detection is local and imperfect — boxes can miss, sit slightly off the target, or (for Skip dark) misread tone. The sidebar marks this lab **Experimental**.
 
+### Hypno Station
+
+**Labs → Hypno Station**. Queue videos, then watch random snippets cut together on a loop until you exit. Each cut pulses. Audio runs through a wet reverb. A colour wash drifts from pink through magenta and purple over the picture.
+
+Cut speed is **Linger**, **Flash**, or **Strobe** (1 / 2 / 3 in the lab). **→** jumps to the next snippet.
+
 Recordings save to the folder you set in Settings (or Videos if that is unset). After you stop, Goon Labs encodes an H.264 MP4 so the file has a duration and can be seeked.
 
 ## Utilities
@@ -110,8 +116,9 @@ Full tables live in Settings. The ones you will hit most:
 | Where | Keys |
 | --- | --- |
 | Library | Ctrl+V import URL, Ctrl+A select all, Enter open, Delete, Esc |
-| Scroller / Beat Bar / Pixel Perfection | Space pause, C webcam, R record, Esc exit |
+| Scroller / Beat Bar / Pixel Perfection / Hypno Station | Space pause, C webcam, R record, Esc exit |
 | Pixel Perfection | F faces, N NSFW, D skip dark, [ ] mosaic |
+| Hypno Station | 1/2/3 cut speed, → next snippet |
 | Trimmer / Time Dilation / GIF | Space play/pause, Esc close |
 
 ## Privacy

@@ -23,6 +23,9 @@ import { DetailsPanel } from './components/DetailsPanel'
 import { MediaGrid } from './components/MediaGrid'
 import { Scroller } from './components/Scroller'
 import { ScrollerSetup } from './components/ScrollerSetup'
+import { HypnoPlayer } from './components/HypnoPlayer'
+import { HypnoSetup } from './components/HypnoSetup'
+import type { HypnoSettings } from './components/HypnoSetup'
 import { PixelPlayer } from './components/PixelPlayer'
 import { PixelSetup } from './components/PixelSetup'
 import type { PixelSettings } from './components/PixelSetup'
@@ -89,6 +92,9 @@ export function App() {
   >(null)
   const [pixel, setPixel] = useState<
     'setup' | { entries: QueueEntry[]; settings: PixelSettings; launch: LabPrefs } | null
+  >(null)
+  const [hypno, setHypno] = useState<
+    'setup' | { entries: QueueEntry[]; settings: HypnoSettings; launch: LabPrefs } | null
   >(null)
   const [trimmer, setTrimmer] = useState<'pick' | MediaItem | null>(null)
   const [dilation, setDilation] = useState<'pick' | MediaItem | null>(null)
@@ -421,6 +427,7 @@ export function App() {
   const closeScroller = useCallback(() => setScroller(null), [])
   const closeQueue = useCallback(() => setQueue(null), [])
   const closePixel = useCallback(() => setPixel(null), [])
+  const closeHypno = useCallback(() => setHypno(null), [])
   const closeTrimmer = useCallback(() => setTrimmer(null), [])
   const closeDilation = useCallback(() => setDilation(null), [])
   const closeGif = useCallback(() => setGifMaker(null), [])
@@ -499,10 +506,14 @@ export function App() {
     },
     [notify]
   )
+  const failHypno = useCallback(() => {
+    setHypno(null)
+    notify('error', 'Hypno Station stopped', 'None of the queued videos could be played.')
+  }, [notify])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (viewerId || scroller || queue || pixel || trimmer || dilation || gifMaker || themesOpen || settingsOpen || urlImportOpen || isTypingTarget(e.target)) return
+      if (viewerId || scroller || queue || pixel || hypno || trimmer || dilation || gifMaker || themesOpen || settingsOpen || urlImportOpen || isTypingTarget(e.target)) return
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         e.preventDefault()
         setUrlImportOpen(true)
@@ -525,6 +536,7 @@ export function App() {
     scroller,
     queue,
     pixel,
+    hypno,
     trimmer,
     dilation,
     gifMaker,
@@ -625,6 +637,7 @@ export function App() {
         onOpenScroller={() => setScroller('setup')}
         onOpenQueue={() => setQueue('setup')}
         onOpenPixel={() => setPixel('setup')}
+        onOpenHypno={() => setHypno('setup')}
         onOpenTrimmer={() => setTrimmer('pick')}
         onOpenTimeDilation={() => setDilation('pick')}
         onOpenGif={() => setGifMaker('pick')}
@@ -853,6 +866,24 @@ export function App() {
           launch={pixel.launch}
           onExit={closePixel}
           onFinished={finishPixel}
+        />
+      )}
+
+      {hypno === 'setup' && (
+        <HypnoSetup
+          videos={items.filter((item) => item.type === 'video')}
+          initialTags={activeTags}
+          onStart={(entries, settings, launch) => setHypno({ entries, settings, launch })}
+          onClose={closeHypno}
+        />
+      )}
+      {hypno && hypno !== 'setup' && (
+        <HypnoPlayer
+          entries={hypno.entries}
+          settings={hypno.settings}
+          launch={hypno.launch}
+          onExit={closeHypno}
+          onFailed={failHypno}
         />
       )}
 

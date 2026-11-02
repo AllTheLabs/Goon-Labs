@@ -1,7 +1,7 @@
 {
   "name": "goon-labs",
   "productName": "Goon Labs",
-  "version": "2.11.9",
+  "version": "2.12.0",
   "description": "Organize, tag, view and export your photos and videos",
   "main": "./out/main/index.js",
   "author": "Goon Labs",
