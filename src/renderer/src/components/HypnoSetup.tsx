@@ -10,9 +10,9 @@ import { matchVideos } from './ScrollerSetup'
 import type { TagMatch } from './ScrollerSetup'
 
 export const HYPNO_SPEEDS = {
-  linger: { label: 'Linger', min: 1100, max: 2000 },
-  flash: { label: 'Flash', min: 420, max: 850 },
-  strobe: { label: 'Strobe', min: 200, max: 380 }
+  linger: { label: 'Linger', duration: 1.6, arp: 4 },
+  flash: { label: 'Flash', duration: 0.64, arp: 3 },
+  strobe: { label: 'Strobe', duration: 0.3, arp: 2 }
 } as const
 
 export type HypnoSpeed = keyof typeof HYPNO_SPEEDS
@@ -256,7 +256,7 @@ export function HypnoSetup({ videos, initialTags, onStart, onClose }: HypnoSetup
               <div className="pixel-strength-row">
                 <span>
                   <strong>Cut speed</strong>
-                  <small>How long each snippet stays on screen. You can change this in the lab.</small>
+                  <small>How fast clips cut. The rumble arpeggio follows this, and the kick lands on each cut.</small>
                 </span>
                 <div className="segmented">
                   {(Object.keys(HYPNO_SPEEDS) as HypnoSpeed[]).map((key) => (
@@ -278,7 +278,7 @@ export function HypnoSetup({ videos, initialTags, onStart, onClose }: HypnoSetup
                 />
                 <span>
                   <strong>Melodic rumble</strong>
-                  <small>Slow dark synth bass in the rumble, kick on each cut — stays out of the reverb</small>
+                  <small>Dark synth arpeggio in time with the cuts, kick last — stays out of the reverb</small>
                 </span>
               </label>
             </div>

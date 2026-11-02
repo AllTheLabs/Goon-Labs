@@ -1,11 +1,11 @@
-/** Wet reverb for clip audio, plus a dry rumble bed with a dark trance melody. */
+/** Wet reverb for clip audio, plus a dry rumble whose arpeggio lands a kick on each cut. */
 
-const BPM = 72
-const STEP = 60 / BPM
-const LOOKAHEAD = 0.2
-
-/** Slow E-minor bass. One note every two beats, around C1–G1. */
-const BASSLINE = [41.2, 41.2, 49.0, 36.71, 41.2, 43.65, 49.0, 32.7]
+const ARP_SETS = [
+  [41.2, 49.0, 61.74, 82.41],
+  [36.71, 49.0, 61.74, 73.42],
+  [41.2, 61.74, 82.41, 98.0],
+  [32.7, 41.2, 49.0, 61.74]
+]
 
 function makeImpulse(ctx: AudioContext, seconds = 2.4, decay = 2.4): AudioBuffer {
   const length = Math.floor(ctx.sampleRate * seconds)
@@ -36,6 +36,12 @@ function makeRumbleNoise(ctx: AudioContext, seconds = 2): AudioBuffer {
   return buffer
 }
 
+function arpNotes(count: number, phrase: number): number[] {
+  const set = ARP_SETS[phrase % ARP_SETS.length]
+  if (count <= 2) return [set[0], set[2]]
+  return set.slice(0, count)
+}
+
 export class HypnoReverb {
   private readonly ctx = new AudioContext()
   private readonly master = this.ctx.createGain()
@@ -47,14 +53,17 @@ export class HypnoReverb {
   private readonly droneDuck = this.ctx.createGain()
   private readonly melodyIn = this.ctx.createGain()
   private readonly melodyDuck = this.ctx.createGain()
+  private readonly melodyDelay = this.ctx.createDelay(1)
+  private readonly cueGain = this.ctx.createGain()
   private readonly sources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>()
   private readonly drones: AudioScheduledSourceNode[] = []
+  private voices: AudioScheduledSourceNode[] = []
+  private kicks: AudioScheduledSourceNode[] = []
   private rumbleOn = true
   private paused = false
   private closed = false
-  private step = 0
-  private nextStep = 0
-  private clock = 0
+  private phrase = 0
+  private cueGen = 0
 
   constructor() {
     const convolver = this.ctx.createConvolver()
@@ -78,9 +87,10 @@ export class HypnoReverb {
     this.rumbleVol.gain.value = 0.72
     this.droneDuck.gain.value = 1
     this.melodyDuck.gain.value = 1
+    this.cueGain.gain.value = 0
+    this.cueGain.connect(this.ctx.destination)
     this.startDrone()
-    this.startMelody()
-    this.startClock()
+    this.startMelodyBus()
   }
 
   attach(element: HTMLMediaElement): void {
@@ -104,18 +114,85 @@ export class HypnoReverb {
 
   setPaused(paused: boolean): void {
     this.paused = paused
+    if (paused) this.cancelPhrase()
     this.applyRumbleMute()
   }
 
-  /** Bass kick on each visual cut. Melody keeps its own slow grid. */
+  /**
+   * One bar: arpeggio, then a kick on the last beat. `onBarEnd` fires on that kick
+   * from the audio clock so cuts stay on the grid even if a clip is still seeking.
+   */
+  startPhrase(duration: number, arpCount: number, onBarEnd?: () => void): void {
+    this.endVoices()
+    if (this.closed || this.ctx.state === 'closed' || duration < 0.08) return
+    const t = this.ctx.currentTime
+    const token = this.cueGen
+    const count = Math.max(2, Math.round(arpCount))
+    const beat = duration / (count + 1)
+
+    if (this.rumbleOn && !this.paused && beat >= 0.04) {
+      this.melodyDelay.delayTime.setTargetAtTime(Math.min(0.95, beat), t, 0.02)
+      const notes = arpNotes(count, this.phrase++)
+      const hold = beat * 0.92
+      const attack = Math.min(0.06, beat * 0.22)
+      for (let i = 0; i < count; i++) {
+        this.synthBass(t + beat * (i + 1), notes[i], hold, attack, i === 0 ? 1 : 0.86)
+      }
+      const decay = Math.min(0.38, Math.max(0.12, duration * 0.2))
+      this.thump(t + duration, decay)
+      this.burst(t + duration, Math.min(0.22, decay))
+      this.duck(this.droneDuck.gain, 1, t + duration)
+      this.duck(this.melodyDuck.gain, 1, t + duration)
+    }
+
+    const cue = this.ctx.createConstantSource()
+    cue.connect(this.cueGain)
+    cue.start(t)
+    cue.stop(t + duration)
+    cue.onended = () => {
+      if (token !== this.cueGen || this.closed || this.paused) return
+      onBarEnd?.()
+    }
+    this.voices.push(cue)
+  }
+
+  /** Immediate kick, e.g. when the user skips to the next snippet. */
   hit(spanSeconds: number): void {
     if (!this.rumbleOn || this.paused || this.ctx.state === 'closed') return
     const t = this.ctx.currentTime
-    const decay = Math.min(0.92, Math.max(0.28, spanSeconds * 0.85))
+    const decay = Math.min(0.38, Math.max(0.12, spanSeconds * 0.2))
     this.thump(t, decay)
-    this.burst(t, Math.min(0.34, decay))
+    this.burst(t, Math.min(0.22, decay))
     this.duck(this.droneDuck.gain, 1, t)
     this.duck(this.melodyDuck.gain, 1, t)
+  }
+
+  cancelPhrase(): void {
+    this.endVoices()
+    this.stopNodes(this.kicks)
+    this.kicks = []
+  }
+
+  private endVoices(): void {
+    this.cueGen++
+    const now = this.ctx.currentTime
+    this.droneDuck.gain.cancelScheduledValues(now)
+    this.melodyDuck.gain.cancelScheduledValues(now)
+    this.droneDuck.gain.setValueAtTime(1, now)
+    this.melodyDuck.gain.setValueAtTime(1, now)
+    this.stopNodes(this.voices)
+    this.voices = []
+  }
+
+  private stopNodes(nodes: AudioScheduledSourceNode[]): void {
+    const now = this.ctx.currentTime
+    for (const node of nodes) {
+      try {
+        node.stop(now)
+      } catch {
+        /* already stopped */
+      }
+    }
   }
 
   resume(): void {
@@ -124,7 +201,7 @@ export class HypnoReverb {
 
   close(): void {
     this.closed = true
-    window.clearInterval(this.clock)
+    this.cancelPhrase()
     for (const node of this.drones) {
       try {
         node.stop()
@@ -171,7 +248,7 @@ export class HypnoReverb {
     this.drones.push(noise)
   }
 
-  private startMelody(): void {
+  private startMelodyBus(): void {
     const filter = this.ctx.createBiquadFilter()
     filter.type = 'lowpass'
     filter.frequency.value = 340
@@ -186,51 +263,24 @@ export class HypnoReverb {
     lfo.start()
     this.drones.push(lfo)
 
-    const delay = this.ctx.createDelay()
-    delay.delayTime.value = STEP
     const feedback = this.ctx.createGain()
-    feedback.gain.value = 0.26
+    feedback.gain.value = 0.22
     const delayFilter = this.ctx.createBiquadFilter()
     delayFilter.type = 'lowpass'
     delayFilter.frequency.value = 420
     const delayOut = this.ctx.createGain()
-    delayOut.gain.value = 0.28
+    delayOut.gain.value = 0.24
     const dry = this.ctx.createGain()
     dry.gain.value = 1
 
     this.melodyIn.connect(filter).connect(this.melodyDuck)
     this.melodyDuck.connect(dry).connect(this.rumbleBus)
-    this.melodyDuck.connect(delay)
-    delay.connect(delayFilter).connect(feedback).connect(delay)
-    delay.connect(delayOut).connect(this.rumbleBus)
+    this.melodyDuck.connect(this.melodyDelay)
+    this.melodyDelay.connect(delayFilter).connect(feedback).connect(this.melodyDelay)
+    this.melodyDelay.connect(delayOut).connect(this.rumbleBus)
   }
 
-  private startClock(): void {
-    this.nextStep = this.ctx.currentTime + 0.08
-    this.clock = window.setInterval(() => this.tick(), 50)
-  }
-
-  private tick(): void {
-    if (this.closed || this.ctx.state === 'closed') return
-    const horizon = this.ctx.currentTime + LOOKAHEAD
-    while (this.nextStep < horizon) {
-      if (this.rumbleOn && !this.paused && this.nextStep >= this.ctx.currentTime - 0.02) {
-        this.playStep(this.step, this.nextStep)
-      }
-      this.step++
-      this.nextStep += STEP
-    }
-  }
-
-  private playStep(step: number, t: number): void {
-    if (step % 2 !== 0) return
-    const freq = BASSLINE[(step / 2) % BASSLINE.length]
-    const accent = step % 16 === 0 ? 1 : 0.82
-    this.synthBass(t, freq, accent)
-  }
-
-  private synthBass(t: number, freq: number, accent: number): void {
-    const hold = STEP * 2.15
+  private synthBass(t: number, freq: number, hold: number, attack: number, accent: number): void {
     const saw = this.ctx.createOscillator()
     saw.type = 'sawtooth'
     saw.frequency.setValueAtTime(freq, t)
@@ -244,9 +294,9 @@ export class HypnoReverb {
     const sawGain = this.ctx.createGain()
     const squareGain = this.ctx.createGain()
     const subGain = this.ctx.createGain()
-    this.env(sawGain.gain, t, 0.22 * accent, hold, 0.1)
-    this.env(squareGain.gain, t, 0.1 * accent, hold, 0.12)
-    this.env(subGain.gain, t, 0.28 * accent, hold, 0.08)
+    this.env(sawGain.gain, t, 0.22 * accent, hold, attack)
+    this.env(squareGain.gain, t, 0.1 * accent, hold, attack)
+    this.env(subGain.gain, t, 0.28 * accent, hold, Math.max(0.02, attack * 0.7))
 
     saw.connect(sawGain).connect(this.melodyIn)
     square.connect(squareGain).connect(this.melodyIn)
@@ -254,9 +304,10 @@ export class HypnoReverb {
     saw.start(t)
     square.start(t)
     sub.start(t)
-    saw.stop(t + hold + 0.08)
-    square.stop(t + hold + 0.08)
-    sub.stop(t + hold + 0.08)
+    saw.stop(t + hold + 0.06)
+    square.stop(t + hold + 0.06)
+    sub.stop(t + hold + 0.06)
+    this.voices.push(saw, square, sub)
   }
 
   private env(param: AudioParam, t: number, peak: number, hold: number, attack: number): void {
@@ -303,6 +354,7 @@ export class HypnoReverb {
     osc.connect(gain).connect(this.rumbleBus)
     osc.start(t)
     osc.stop(t + decay + 0.04)
+    this.kicks.push(osc)
   }
 
   private burst(t: number, decay: number): void {
@@ -320,5 +372,6 @@ export class HypnoReverb {
     noise.connect(filter).connect(gain).connect(this.rumbleBus)
     noise.start(t)
     noise.stop(t + decay + 0.04)
+    this.kicks.push(noise)
   }
 }

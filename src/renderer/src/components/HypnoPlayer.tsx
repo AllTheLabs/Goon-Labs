@@ -18,16 +18,11 @@ interface HypnoPlayerProps {
 }
 
 const CONTROLS_HIDE_MS = 2500
-const MIN_CLIP = 0.35
 
 interface Snippet {
   index: number
   start: number
   duration: number
-}
-
-function randomBetween(min: number, max: number): number {
-  return min + Math.random() * (max - min)
 }
 
 function waitFor(video: HTMLVideoElement, event: 'loadedmetadata' | 'seeked', timeoutMs = 8000): Promise<void> {
@@ -96,16 +91,16 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
     reverb.setVolume(muted ? 0 : volume)
     reverb.setRumble(rumbleRef.current)
 
-    let gen = 0
     let active = 0
     let lastIndex = -1
     let failures = 0
-    let cutTimer = 0
-    let remaining = 0
-    let cutAt = 0
+    let armGen = 0
     let closed = false
+    let next: { video: HTMLVideoElement; snippet: Snippet } | null = null
 
-    const pulse = (span: number) => {
+    const specNow = () => HYPNO_SPEEDS[speedRef.current]
+
+    const pulse = () => {
       stageRef.current?.animate(
         [
           { transform: 'scale(1.08)', filter: 'brightness(1.45) saturate(1.35)' },
@@ -114,88 +109,117 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
         { duration: 360, easing: 'cubic-bezier(0.15, 0.85, 0.3, 1)' }
       )
       flashRef.current?.animate([{ opacity: 0.7 }, { opacity: 0 }], { duration: 420, easing: 'ease-out' })
-      reverb.hit(span)
     }
 
     const pick = (): Snippet => {
-      const range = HYPNO_SPEEDS[speedRef.current]
+      const spec = specNow()
       let index = Math.floor(Math.random() * entries.length)
       if (entries.length > 1 && index === lastIndex) index = (index + 1) % entries.length
       lastIndex = index
-      return { index, start: 0, duration: randomBetween(range.min, range.max) / 1000 }
+      return { index, start: 0, duration: spec.duration }
     }
 
     const prepare = async (video: HTMLVideoElement, snippet: Snippet): Promise<Snippet> => {
       const item = entries[snippet.index].item
       const url = mediaUrl(item)
+      video.loop = true
       if (video.getAttribute('src') !== url) {
         video.src = url
         await waitFor(video, 'loadedmetadata')
       }
-      const duration = video.duration
-      if (!Number.isFinite(duration) || duration < 0.2) throw new Error('clip too short')
-      const span = Math.min(Math.max(MIN_CLIP, snippet.duration), Math.max(MIN_CLIP, duration - 0.05))
-      const start = duration <= span + 0.05 ? 0 : Math.random() * (duration - span)
+      const clipDur = video.duration
+      if (!Number.isFinite(clipDur) || clipDur < 0.15) throw new Error('clip too short')
+      const start = Math.random() * Math.max(0, clipDur - 0.08)
       if (Math.abs(video.currentTime - start) > 0.04) {
         video.currentTime = start
         await waitFor(video, 'seeked')
       }
-      return { index: snippet.index, start, duration: span }
+      return { index: snippet.index, start, duration: snippet.duration }
     }
 
-    const schedule = (ms: number, token: number) => {
-      window.clearTimeout(cutTimer)
-      remaining = ms
-      cutAt = performance.now() + ms
-      cutTimer = window.setTimeout(() => {
-        if (closed || token !== gen || pausedRef.current) return
-        void cut(token)
-      }, ms)
+    const arm = (video: HTMLVideoElement) => {
+      const token = ++armGen
+      const snippet = pick()
+      void (async () => {
+        try {
+          const ready = await prepare(video, snippet)
+          if (closed || token !== armGen) return
+          next = { video, snippet: ready }
+          failures = 0
+        } catch {
+          if (closed || token !== armGen) return
+          failures++
+          if (failures >= Math.max(3, entries.length * 2)) {
+            onFailed()
+            return
+          }
+          window.setTimeout(() => {
+            if (!closed && token === armGen) arm(video)
+          }, 80)
+        }
+      })()
     }
 
-    const show = (video: HTMLVideoElement, snippet: Snippet, token: number) => {
-      if (closed || token !== gen) return
+    const reveal = (video: HTMLVideoElement, snippet: Snippet) => {
       video.muted = false
       video.volume = 1
-      reverb.resume()
+      video.classList.add('active')
       void video.play().catch(() => {})
       setNowPlaying(entries[snippet.index].item.fileName)
       setCuts((n) => n + 1)
-      schedule(snippet.duration * 1000, token)
     }
 
-    const cut = async (token: number) => {
-      if (closed || token !== gen) return
+    const swapLayers = () => {
       const incoming = active === 0 ? b : a
       const outgoing = active === 0 ? a : b
-      try {
-        const snippet = await prepare(incoming, pick())
-        if (closed || token !== gen) return
-        failures = 0
+      outgoing.muted = true
+      outgoing.pause()
+      if (next?.video === incoming) {
         incoming.classList.add('active')
         outgoing.classList.remove('active')
-        outgoing.muted = true
-        outgoing.pause()
+        reveal(incoming, next.snippet)
         active = active === 0 ? 1 : 0
-        pulse(snippet.duration)
-        show(incoming, snippet, token)
-        void prepare(outgoing, pick()).catch(() => {})
-      } catch {
-        failures++
-        if (failures >= Math.max(3, entries.length * 2)) {
-          onFailed()
-          return
-        }
-        window.setTimeout(() => {
-          if (!closed && token === gen) void cut(token)
-        }, 80)
+        next = null
+        arm(outgoing)
+        return
       }
+      const token = ++armGen
+      const snippet = pick()
+      void (async () => {
+        try {
+          const ready = await prepare(incoming, snippet)
+          if (closed || token !== armGen) return
+          incoming.classList.add('active')
+          outgoing.classList.remove('active')
+          reveal(incoming, ready)
+          active = active === 0 ? 1 : 0
+          next = null
+          arm(outgoing)
+        } catch {
+          if (!closed && token === armGen) arm(incoming)
+        }
+      })()
+    }
+
+    const beginBar = () => {
+      const spec = specNow()
+      reverb.resume()
+      reverb.startPhrase(spec.duration, spec.arp, () => {
+        if (closed || pausedRef.current) return
+        pulse()
+        swapLayers()
+        beginBar()
+      })
     }
 
     skipRef.current = () => {
-      window.clearTimeout(cutTimer)
-      remaining = 0
-      void cut(gen)
+      if (closed) return
+      const spec = specNow()
+      reverb.cancelPhrase()
+      pulse()
+      swapLayers()
+      beginBar()
+      reverb.hit(spec.duration)
     }
 
     engineRef.current = {
@@ -205,46 +229,32 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
         const current = active === 0 ? a : b
         current.pause()
         reverb.setPaused(true)
-        window.clearTimeout(cutTimer)
-        remaining = Math.max(0, cutAt - performance.now())
       },
       resume: () => {
         const current = active === 0 ? a : b
         reverb.setPaused(false)
         reverb.resume()
         void current.play().catch(() => {})
-        schedule(remaining, gen)
+        beginBar()
       }
     }
-
-    const onEndedA = () => {
-      if (active === 0 && !pausedRef.current) skipRef.current()
-    }
-    const onEndedB = () => {
-      if (active === 1 && !pausedRef.current) skipRef.current()
-    }
-    a.addEventListener('ended', onEndedA)
-    b.addEventListener('ended', onEndedB)
 
     void (async () => {
       try {
         const first = await prepare(a, pick())
         if (closed) return
         a.classList.add('active')
-        pulse(first.duration)
-        show(a, first, gen)
-        void prepare(b, pick()).catch(() => {})
+        reveal(a, first)
+        beginBar()
+        arm(b)
       } catch {
-        void cut(gen)
+        if (!closed) skipRef.current()
       }
     })()
 
     return () => {
       closed = true
-      gen++
-      window.clearTimeout(cutTimer)
-      a.removeEventListener('ended', onEndedA)
-      b.removeEventListener('ended', onEndedB)
+      armGen++
       engineRef.current = null
       reverb.close()
     }
@@ -315,8 +325,8 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
       onClick={() => setPaused((p) => !p)}
     >
       <div className="queue-stage hypno-stage" ref={stageRef}>
-        <video ref={aRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" />
-        <video ref={bRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" />
+        <video ref={aRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" loop />
+        <video ref={bRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" loop />
         <div className="hypno-hue" />
         <div className="hypno-vignette" />
       </div>
@@ -359,7 +369,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
 
         <div className="scroller-divider" />
 
-        <div className="segmented queue-beat-picker" title="Cut speed (1 / 2 / 3)">
+        <div className="segmented queue-beat-picker" title="Cut speed — melody follows (1 / 2 / 3)">
           {(Object.keys(HYPNO_SPEEDS) as HypnoSpeed[]).map((key) => (
             <button key={key} className={speed === key ? 'active' : ''} onClick={() => setSpeed(key)}>
               {HYPNO_SPEEDS[key].label}

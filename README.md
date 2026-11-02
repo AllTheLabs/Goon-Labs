@@ -62,9 +62,9 @@ Detection is local and imperfect — boxes can miss, sit slightly off the target
 
 ### Hypno Station
 
-**Labs → Hypno Station**. Queue videos, then watch random snippets cut together on a loop until you exit. Each cut pulses. Audio runs through a wet reverb. A colour wash drifts from pink through magenta and purple over the picture. A dry **melodic rumble** (on by default) carries a slow dark synth-bass line and a bass kick on each cut, and stays out of the reverb — toggle it in setup or with **B** in the lab.
+**Labs → Hypno Station**. Queue videos, then watch random snippets cut together on a loop until you exit. Each cut pulses. Audio runs through a wet reverb. A colour wash drifts from pink through magenta and purple over the picture. A dry **melodic rumble** (on by default) plays a dark synth arpeggio in time with the cuts, with the bass kick as the last note of each phrase, and stays out of the reverb — toggle it in setup or with **B** in the lab.
 
-Cut speed is **Linger**, **Flash**, or **Strobe** (1 / 2 / 3 in the lab). **→** jumps to the next snippet.
+Cut speed is **Linger**, **Flash**, or **Strobe** (1 / 2 / 3 in the lab). The melody follows that speed. **→** jumps to the next snippet.
 
 Recordings save to the folder you set in Settings (or Videos if that is unset). After you stop, Goon Labs encodes an H.264 MP4 so the file has a duration and can be seeked.
 
