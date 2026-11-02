@@ -63,6 +63,7 @@ const HYPNO_KEYS: [string, string][] = [
   ['Space', 'Pause / resume'],
   ['→', 'Next snippet'],
   ['1 / 2 / 3', 'Linger / Flash / Strobe'],
+  ['B', 'Melodic rumble on / off'],
   ['M', 'Mute'],
   ['↑ / ↓', 'Volume'],
   ['C', 'Webcam on / off'],

@@ -19,6 +19,7 @@ export type HypnoSpeed = keyof typeof HYPNO_SPEEDS
 
 export interface HypnoSettings {
   speed: HypnoSpeed
+  rumble: boolean
 }
 
 const SETTINGS_KEY = 'hypno.settings'
@@ -26,9 +27,12 @@ const SETTINGS_KEY = 'hypno.settings'
 export function loadHypnoSettings(): HypnoSettings {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<HypnoSettings>
-    return { speed: saved.speed && saved.speed in HYPNO_SPEEDS ? saved.speed : 'flash' }
+    return {
+      speed: saved.speed && saved.speed in HYPNO_SPEEDS ? saved.speed : 'flash',
+      rumble: saved.rumble !== false
+    }
   } catch {
-    return { speed: 'flash' }
+    return { speed: 'flash', rumble: true }
   }
 }
 
@@ -266,6 +270,17 @@ export function HypnoSetup({ videos, initialTags, onStart, onClose }: HypnoSetup
                   ))}
                 </div>
               </div>
+              <label className={`endless-toggle ${settings.rumble ? 'on' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={settings.rumble}
+                  onChange={(e) => updateSettings({ rumble: e.target.checked })}
+                />
+                <span>
+                  <strong>Melodic rumble</strong>
+                  <small>Slow dark synth bass in the rumble, kick on each cut — stays out of the reverb</small>
+                </span>
+              </label>
             </div>
 
             <LabStartToggles value={launch} onChange={setLaunch} />

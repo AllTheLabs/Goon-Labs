@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pause, Play, Volume1, Volume2, VolumeX, X } from 'lucide-react'
+import { Pause, Play, Volume1, Volume2, VolumeX, Waves, X } from 'lucide-react'
 import { HypnoReverb } from '../hypnoReverb'
 import type { LabPrefs } from '../labPrefs'
 import { useTheme } from '../themes'
@@ -61,12 +61,14 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
   const skipRef = useRef<() => void>(() => {})
   const engineRef = useRef<{
     setVolume: (volume: number) => void
+    setRumble: (on: boolean) => void
     pause: () => void
     resume: () => void
   } | null>(null)
 
   const [paused, setPaused] = useState(false)
   const [speed, setSpeed] = useState(settings.speed)
+  const [rumble, setRumble] = useState(settings.rumble)
   const [volume, setVolume] = useState(0.8)
   const [muted, setMuted] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
@@ -75,10 +77,12 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
 
   const pausedRef = useRef(paused)
   const speedRef = useRef(speed)
+  const rumbleRef = useRef(rumble)
   pausedRef.current = paused
   speedRef.current = speed
+  rumbleRef.current = rumble
 
-  useEffect(() => saveHypnoSettings({ speed }), [speed])
+  useEffect(() => saveHypnoSettings({ speed, rumble }), [speed, rumble])
 
   useEffect(() => {
     const a = aRef.current
@@ -90,6 +94,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
     reverb.attach(b)
     reverb.resume()
     reverb.setVolume(muted ? 0 : volume)
+    reverb.setRumble(rumbleRef.current)
 
     let gen = 0
     let active = 0
@@ -100,7 +105,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
     let cutAt = 0
     let closed = false
 
-    const pulse = () => {
+    const pulse = (span: number) => {
       stageRef.current?.animate(
         [
           { transform: 'scale(1.08)', filter: 'brightness(1.45) saturate(1.35)' },
@@ -109,6 +114,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
         { duration: 360, easing: 'cubic-bezier(0.15, 0.85, 0.3, 1)' }
       )
       flashRef.current?.animate([{ opacity: 0.7 }, { opacity: 0 }], { duration: 420, easing: 'ease-out' })
+      reverb.hit(span)
     }
 
     const pick = (): Snippet => {
@@ -171,7 +177,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
         outgoing.muted = true
         outgoing.pause()
         active = active === 0 ? 1 : 0
-        pulse()
+        pulse(snippet.duration)
         show(incoming, snippet, token)
         void prepare(outgoing, pick()).catch(() => {})
       } catch {
@@ -194,14 +200,17 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
 
     engineRef.current = {
       setVolume: (level) => reverb.setVolume(level),
+      setRumble: (on) => reverb.setRumble(on),
       pause: () => {
         const current = active === 0 ? a : b
         current.pause()
+        reverb.setPaused(true)
         window.clearTimeout(cutTimer)
         remaining = Math.max(0, cutAt - performance.now())
       },
       resume: () => {
         const current = active === 0 ? a : b
+        reverb.setPaused(false)
         reverb.resume()
         void current.play().catch(() => {})
         schedule(remaining, gen)
@@ -222,7 +231,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
         const first = await prepare(a, pick())
         if (closed) return
         a.classList.add('active')
-        pulse()
+        pulse(first.duration)
         show(a, first, gen)
         void prepare(b, pick()).catch(() => {})
       } catch {
@@ -244,6 +253,10 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
   useEffect(() => {
     engineRef.current?.setVolume(muted ? 0 : volume)
   }, [volume, muted])
+
+  useEffect(() => {
+    engineRef.current?.setRumble(rumble)
+  }, [rumble])
 
   const pauseReady = useRef(false)
   useEffect(() => {
@@ -281,6 +294,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
       else if (key === '1') setSpeed('linger')
       else if (key === '2') setSpeed('flash')
       else if (key === '3') setSpeed('strobe')
+      else if (key === 'b') setRumble((on) => !on)
       else if (key === 'arrowup') setVolume((v) => Math.min(1, v + 0.05))
       else if (key === 'arrowdown') setVolume((v) => Math.max(0, v - 0.05))
       else return
@@ -334,6 +348,13 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
         </button>
         <button className="scroller-btn pixel-toggle" onClick={() => skipRef.current()} title="Next snippet (→)">
           Cut
+        </button>
+        <button
+          className={`scroller-btn pixel-toggle ${rumble ? 'active' : ''}`}
+          onClick={() => setRumble((on) => !on)}
+          title="Melodic rumble (B)"
+        >
+          <Waves size={16} /> Rumble
         </button>
 
         <div className="scroller-divider" />
