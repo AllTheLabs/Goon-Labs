@@ -27,6 +27,7 @@ The window opens **maximized**. Pick a **repository** folder. That folder is the
 | `Pictures/` | Imported photos |
 | `Videos/` | Imported videos |
 | `.mediamanager/library.json` | Item ids, tags, and paths |
+| `.mediamanager/shelf.json` | Pins and library-viewer open counts |
 | `.mediamanager/previews/` | Small copies of videos for the Scroller |
 
 Change the repository later from the sidebar.
@@ -38,6 +39,7 @@ The main window is a grid of everything in the repository. Search names and tags
 - **Import files** or **Import folder**, or drop files onto the window. Photos go to `Pictures`, videos to `Videos`. Names that already exist get ` (1)`, ` (2)`, and so on.
 - **Import URL** (or Ctrl+V) downloads the media and adds it to the library. That covers direct file links, most video sites via yt-dlp, and X/Twitter posts (video is preferred over stills).
 - Click an item to select it. Ctrl/Shift-click for several. The right-hand panel shows a preview, tags, size, and actions.
+- **Pin** (card, details, viewer, or **P**) keeps items at the top of the grid. Under that, **Frequently gooned to** lists clips you open often in the library viewer (three or more times). Labs do not count. Both shelves hide while you work through **Untagged**.
 - Tags are lowercase. Filter the grid from the sidebar, or use **Untagged** to work through files that have none yet.
 - **Enter** opens the viewer, **Delete** moves files to the Recycle Bin, **Export** copies the selection somewhere else.
 - With one video selected, **Trim**, **Splice**, **Loop**, **Dilate**, and **GIF** on the selection bar (and in the details panel) open those utilities directly.
@@ -158,7 +160,7 @@ Full tables live in Settings. The ones you will hit most:
 
 | Where | Keys |
 | --- | --- |
-| Library | Ctrl+V import URL, Ctrl+A select all, Enter open, Delete, Esc |
+| Library | Ctrl+V import URL, Ctrl+A select all, Enter open, P pin, Delete, Esc |
 | Scroller / Beat Bar / Pixel Perfection / Hypno Station / Still Station | Space pause, C webcam, R record, Esc exit |
 | Pixel Perfection | F faces, N NSFW, D skip dark, [ ] mosaic |
 | Hypno Station | 1/2/3 cut speed, B rumble, E overlays, → next snippet |

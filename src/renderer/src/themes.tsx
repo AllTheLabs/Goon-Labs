@@ -104,6 +104,8 @@ export interface ThemeCopy {
   searchPlaceholder: string
   emptyTitle: string
   emptyBody: string
+  pinned: string
+  frequentlyGooned: string
   welcomeTitle: string
   liveCaption: string
 }
@@ -168,6 +170,8 @@ const DEFAULT_COPY: ThemeCopy = {
   searchPlaceholder: 'Search names & tags…',
   emptyTitle: 'Your library is empty',
   emptyBody: 'Import photos and videos, or drag them anywhere onto this window.',
+  pinned: 'Pinned',
+  frequentlyGooned: 'Frequently gooned to',
   welcomeTitle: 'Welcome to Goon Labs',
   liveCaption: 'live session in progress'
 }

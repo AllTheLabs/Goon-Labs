@@ -11,12 +11,24 @@ export interface MediaItem {
   tags: string[]
 }
 
+export interface LibraryViewStats {
+  count: number
+  lastViewedAt: number
+}
+
+export interface LibraryShelf {
+  pinnedIds: string[]
+  views: Record<string, LibraryViewStats>
+}
+
 export interface LibraryState {
   root: string
   items: MediaItem[]
   /** Videos that have a lightweight preview copy for the Scroller. */
   previewIds: string[]
   previewsPending: number
+  pinnedIds: string[]
+  views: Record<string, LibraryViewStats>
 }
 
 export interface PreviewReadyEvent {
@@ -142,6 +154,10 @@ export interface MediaApi {
   getLibrary(): Promise<LibraryState | null>
   chooseRepository(): Promise<LibraryState | null>
   refreshLibrary(): Promise<LibraryState | null>
+  /** Pin ids that are not pinned; unpin if every id is already pinned. */
+  togglePins(ids: string[]): Promise<LibraryShelf>
+  /** Counts an open in the library viewer. Labs and utilities do not call this. */
+  recordLibraryView(id: string): Promise<LibraryShelf>
   importWithDialog(source: ImportSource): Promise<ImportResult | null>
   importPaths(paths: string[]): Promise<ImportResult>
   addTags(ids: string[], tags: string[]): Promise<MediaItem[]>

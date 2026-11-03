@@ -120,6 +120,9 @@ function registerIpc(): void {
     return library.state
   })
 
+  ipcMain.handle('library:toggle-pins', (_event, ids: string[]) => requireLibrary().togglePins(ids))
+  ipcMain.handle('library:record-view', (_event, id: string) => requireLibrary().recordLibraryView(id))
+
   ipcMain.handle('media:import-dialog', async (_event, source: ImportSource) => {
     const lib = requireLibrary()
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow!, {

@@ -631,6 +631,29 @@ p {
 
 /* ---------- Grid ---------- */
 
+.library-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.library-shelf-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.library-shelf-head span {
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-faint);
+}
+
 .media-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--thumb-size), 1fr));
@@ -705,6 +728,33 @@ p {
   opacity: 1;
 }
 .media-card.selected .card-check {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+.card-pin {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+}
+.media-card:hover .card-pin,
+.media-card.pinned .card-pin {
+  opacity: 1;
+}
+.media-card.pinned .card-pin {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
@@ -1077,6 +1127,10 @@ p {
 }
 .viewer-btn:hover {
   background: rgba(255, 255, 255, 0.16);
+}
+.viewer-btn.on {
+  background: var(--accent);
+  color: var(--accent-contrast);
 }
 .viewer-stage {
   flex: 1;

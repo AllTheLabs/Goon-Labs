@@ -12,6 +12,7 @@ const LIBRARY_KEYS: [string, string][] = [
   ['Ctrl + V', 'Import from URL'],
   ['Ctrl + A', 'Select all'],
   ['Enter', 'Open the selected item'],
+  ['P', 'Pin or unpin the selection'],
   ['Delete', 'Delete selected media'],
   ['Esc', 'Clear selection / close'],
   ['Ctrl / Shift + click', 'Select several items']

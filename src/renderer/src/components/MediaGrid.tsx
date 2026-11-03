@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
-import { Check, FileWarning, Play } from 'lucide-react'
+import { Check, FileWarning, Pin, Play } from 'lucide-react'
 import type { MediaItem } from '../../../shared/types'
 import { extensionOf, formatDuration, mediaUrl } from '../utils'
 
@@ -8,12 +8,14 @@ interface MediaGridProps {
   items: MediaItem[]
   selected: Set<string>
   activeId: string | null
+  pinned: Set<string>
   onItemClick: (id: string, event: MouseEvent) => void
   onToggleCheck: (id: string) => void
+  onTogglePin: (id: string) => void
   onOpen: (id: string) => void
 }
 
-export function MediaGrid({ items, selected, activeId, ...handlers }: MediaGridProps) {
+export function MediaGrid({ items, selected, activeId, pinned, ...handlers }: MediaGridProps) {
   return (
     <div className="media-grid">
       {items.map((item) => (
@@ -22,6 +24,7 @@ export function MediaGrid({ items, selected, activeId, ...handlers }: MediaGridP
           item={item}
           selected={selected.has(item.id)}
           active={item.id === activeId}
+          pinned={pinned.has(item.id)}
           {...handlers}
         />
       ))}
@@ -29,12 +32,31 @@ export function MediaGrid({ items, selected, activeId, ...handlers }: MediaGridP
   )
 }
 
+export function LibraryShelf({
+  title,
+  items,
+  ...rest
+}: { title: string } & MediaGridProps) {
+  if (items.length === 0) return null
+  return (
+    <section className="library-shelf">
+      <h2 className="library-shelf-head">
+        {title}
+        <span>{items.length}</span>
+      </h2>
+      <MediaGrid items={items} {...rest} />
+    </section>
+  )
+}
+
 interface MediaCardProps {
   item: MediaItem
   selected: boolean
   active: boolean
+  pinned: boolean
   onItemClick: (id: string, event: MouseEvent) => void
   onToggleCheck: (id: string) => void
+  onTogglePin: (id: string) => void
   onOpen: (id: string) => void
 }
 
@@ -42,13 +64,15 @@ const MediaCard = memo(function MediaCard({
   item,
   selected,
   active,
+  pinned,
   onItemClick,
   onToggleCheck,
+  onTogglePin,
   onOpen
 }: MediaCardProps) {
   return (
     <div
-      className={`media-card ${selected ? 'selected' : ''} ${active ? 'active' : ''}`}
+      className={`media-card ${selected ? 'selected' : ''} ${active ? 'active' : ''} ${pinned ? 'pinned' : ''}`}
       onClick={(e) => onItemClick(item.id, e)}
       onDoubleClick={() => onOpen(item.id)}
       title={item.fileName}
@@ -64,6 +88,17 @@ const MediaCard = memo(function MediaCard({
           }}
         >
           <Check size={14} strokeWidth={3} />
+        </button>
+        <button
+          className={`card-pin ${pinned ? 'on' : ''}`}
+          aria-label={pinned ? 'Unpin' : 'Pin'}
+          title={pinned ? 'Unpin' : 'Pin to the top'}
+          onClick={(e) => {
+            e.stopPropagation()
+            onTogglePin(item.id)
+          }}
+        >
+          <Pin size={13} fill={pinned ? 'currentColor' : 'none'} />
         </button>
       </div>
       <div className="media-meta">

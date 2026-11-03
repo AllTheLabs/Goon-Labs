@@ -9,6 +9,7 @@ import {
   ImagePlus,
   Link,
   Loader2,
+  Pin,
   RefreshCw,
   Search,
   Scissors,
@@ -20,9 +21,17 @@ import {
   Upload,
   X
 } from 'lucide-react'
-import type { AppChangelog, DownloadJob, ImportResult, LibraryState, MediaItem } from '../../shared/types'
+import type {
+  AppChangelog,
+  DownloadJob,
+  ImportResult,
+  LibraryShelf,
+  LibraryState,
+  LibraryViewStats,
+  MediaItem
+} from '../../shared/types'
 import { DetailsPanel } from './components/DetailsPanel'
-import { MediaGrid } from './components/MediaGrid'
+import { LibraryShelf as Shelf, MediaGrid } from './components/MediaGrid'
 import { Scroller } from './components/Scroller'
 import { ScrollerSetup } from './components/ScrollerSetup'
 import { HypnoPlayer } from './components/HypnoPlayer'
@@ -82,6 +91,17 @@ function matchesQuery(item: MediaItem, terms: string[]): boolean {
 
 function isTypingTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
+}
+
+const FREQUENT_MIN_VIEWS = 3
+const FREQUENT_MAX = 16
+
+function rankFrequent(views: Record<string, LibraryViewStats>, eligible: Set<string>): string[] {
+  return Object.entries(views)
+    .filter(([id, stats]) => eligible.has(id) && stats.count >= FREQUENT_MIN_VIEWS)
+    .sort((a, b) => b[1].count - a[1].count || b[1].lastViewedAt - a[1].lastViewedAt)
+    .slice(0, FREQUENT_MAX)
+    .map(([id]) => id)
 }
 
 export function App() {
@@ -235,6 +255,66 @@ export function App() {
       .sort(SORTERS[sort])
   }, [items, query, typeFilter, activeTags, sort, untaggedView, selected])
 
+  const pinnedIdSet = useMemo(() => new Set(library?.pinnedIds ?? []), [library?.pinnedIds])
+  const visibleIds = useMemo(() => new Set(visible.map((item) => item.id)), [visible])
+  const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
+
+  const pinnedItems = useMemo(() => {
+    if (untaggedView) return []
+    const next: MediaItem[] = []
+    for (const id of library?.pinnedIds ?? []) {
+      const item = itemsById.get(id)
+      if (item && visibleIds.has(id)) next.push(item)
+    }
+    return next
+  }, [library?.pinnedIds, itemsById, visibleIds, untaggedView])
+
+  const frequentItems = useMemo(() => {
+    if (untaggedView) return []
+    const eligible = new Set(
+      [...visibleIds].filter((id) => !pinnedIdSet.has(id))
+    )
+    const next: MediaItem[] = []
+    for (const id of rankFrequent(library?.views ?? {}, eligible)) {
+      const item = itemsById.get(id)
+      if (item) next.push(item)
+    }
+    return next
+  }, [untaggedView, visibleIds, pinnedIdSet, library?.views, itemsById])
+
+  const shelfIds = useMemo(
+    () => new Set([...pinnedItems, ...frequentItems].map((item) => item.id)),
+    [pinnedItems, frequentItems]
+  )
+
+  const gridItems = useMemo(
+    () => (untaggedView ? visible : visible.filter((item) => !shelfIds.has(item.id))),
+    [untaggedView, visible, shelfIds]
+  )
+
+  const applyShelf = useCallback((shelf: LibraryShelf) => {
+    setLibrary((lib) => lib && { ...lib, pinnedIds: shelf.pinnedIds, views: shelf.views })
+  }, [])
+
+  const togglePins = useCallback(
+    async (ids: string[]) => {
+      try {
+        applyShelf(await window.api.togglePins(ids))
+      } catch (err) {
+        notify('error', 'Could not update pins', (err as Error).message)
+      }
+    },
+    [applyShelf, notify]
+  )
+
+  useEffect(() => {
+    if (!viewerId) return
+    void window.api
+      .recordLibraryView(viewerId)
+      .then(applyShelf)
+      .catch(() => undefined)
+  }, [viewerId, applyShelf])
+
   // Keep the selection limited to what's on screen so exports never include hidden items.
   useEffect(() => {
     const visibleIds = new Set(visible.map((item) => item.id))
@@ -363,7 +443,11 @@ export function App() {
             lib && {
               ...lib,
               items: lib.items.filter((item) => !gone.has(item.id)),
-              previewIds: lib.previewIds.filter((id) => !gone.has(id))
+              previewIds: lib.previewIds.filter((id) => !gone.has(id)),
+              pinnedIds: (lib.pinnedIds ?? []).filter((id) => !gone.has(id)),
+              views: Object.fromEntries(
+                Object.entries(lib.views ?? {}).filter(([id]) => !gone.has(id))
+              )
             }
         )
         if (result.deletedIds.length > 0) {
@@ -566,6 +650,9 @@ export function App() {
         clearSelection()
       } else if (e.key === 'Enter' && activeId && selected.has(activeId)) {
         setViewerId(activeId)
+      } else if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const ids = selected.size > 0 ? [...selected] : activeId ? [activeId] : []
+        if (ids.length > 0) void togglePins(ids)
       } else if (e.key === 'Delete' && selected.size > 0) {
         e.preventDefault()
         void deleteItems([...selected])
@@ -593,7 +680,8 @@ export function App() {
     selected,
     selectAll,
     clearSelection,
-    deleteItems
+    deleteItems,
+    togglePins
   ])
 
   // Drag files or folders from Explorer onto the window to import them.
@@ -870,6 +958,10 @@ export function App() {
               </button>
             </>
           )}
+          <button className="btn btn-secondary btn-sm" onClick={() => togglePins(selectedItems.map((item) => item.id))}>
+            <Pin size={14} />
+            {selectedItems.every((item) => pinnedIdSet.has(item.id)) ? 'Unpin' : 'Pin'}
+          </button>
           <button className="btn btn-primary btn-sm" onClick={exportSelected}>
             <Download size={14} /> Export selected
           </button>
@@ -921,14 +1013,49 @@ export function App() {
               )}
             </div>
           ) : (
-            <MediaGrid
-              items={visible}
-              selected={selected}
-              activeId={activeId}
-              onItemClick={handleItemClick}
-              onToggleCheck={toggleCheck}
-              onOpen={setViewerId}
-            />
+            <div className="library-feed">
+              {!untaggedView && (
+                <>
+                  <Shelf
+                    title={copy.pinned}
+                    items={pinnedItems}
+                    selected={selected}
+                    activeId={activeId}
+                    pinned={pinnedIdSet}
+                    onItemClick={handleItemClick}
+                    onToggleCheck={toggleCheck}
+                    onTogglePin={(id) => void togglePins([id])}
+                    onOpen={setViewerId}
+                  />
+                  <Shelf
+                    title={copy.frequentlyGooned}
+                    items={frequentItems}
+                    selected={selected}
+                    activeId={activeId}
+                    pinned={pinnedIdSet}
+                    onItemClick={handleItemClick}
+                    onToggleCheck={toggleCheck}
+                    onTogglePin={(id) => void togglePins([id])}
+                    onOpen={setViewerId}
+                  />
+                  {gridItems.length > 0 && (pinnedItems.length > 0 || frequentItems.length > 0) && (
+                    <h2 className="library-shelf-head">{copy.allMedia}</h2>
+                  )}
+                </>
+              )}
+              {gridItems.length > 0 && (
+                <MediaGrid
+                  items={gridItems}
+                  selected={selected}
+                  activeId={activeId}
+                  pinned={pinnedIdSet}
+                  onItemClick={handleItemClick}
+                  onToggleCheck={toggleCheck}
+                  onTogglePin={(id) => void togglePins([id])}
+                  onOpen={setViewerId}
+                />
+              )}
+            </div>
           )}
         </div>
       </main>
@@ -941,6 +1068,8 @@ export function App() {
         quickTags={untaggedView ? allTags : []}
         onAddTags={addTags}
         onRemoveTag={removeTag}
+        pinnedIds={pinnedIdSet}
+        onTogglePin={(ids) => void togglePins(ids)}
         onOpenViewer={setViewerId}
         onOpenTrimmer={(item) => setTrimmer(item)}
         onOpenSplicer={(item) => setSplicer(item)}
@@ -959,6 +1088,8 @@ export function App() {
           onNavigate={setViewerId}
           onClose={closeViewer}
           onDelete={(id) => deleteItems([id])}
+          pinned={Boolean(viewerId && pinnedIdSet.has(viewerId))}
+          onTogglePin={(id) => void togglePins([id])}
         />
       )}
 

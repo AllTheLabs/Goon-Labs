@@ -10,7 +10,9 @@ import type {
   GifOptions,
   GifQuality,
   ImportResult,
+  LibraryShelf,
   LibraryState,
+  LibraryViewStats,
   MediaItem,
   MediaType,
   TrimMode
@@ -38,7 +40,13 @@ const MEDIA_FOLDERS: Record<MediaType, string> = {
 }
 const DATA_FOLDER = '.mediamanager'
 const DATABASE_FILE = 'library.json'
+const SHELF_FILE = 'shelf.json'
 const DATABASE_VERSION = 1
+
+interface ShelfFile {
+  pinnedIds?: unknown
+  views?: unknown
+}
 
 interface Database {
   version: number
@@ -264,6 +272,8 @@ async function copyWithUniqueName(source: string, dir: string, fileName: string)
 
 export class Library {
   private items = new Map<string, MediaItem>()
+  private pinnedIds: string[] = []
+  private views: Record<string, LibraryViewStats> = {}
   private saveQueue: Promise<void> = Promise.resolve()
   private readonly previews: PreviewManager
 
@@ -281,6 +291,7 @@ export class Library {
     const library = new Library(path.resolve(root), onPreviewProgress)
     await library.ensureFolders()
     await library.load()
+    await library.loadShelf()
     await library.sync()
     await library.previews.load(new Set(library.items.keys()))
     library.queuePreviews(library.list())
@@ -292,8 +303,14 @@ export class Library {
       root: this.root,
       items: this.list(),
       previewIds: this.previews.readyIds,
-      previewsPending: this.previews.remaining
+      previewsPending: this.previews.remaining,
+      pinnedIds: [...this.pinnedIds],
+      views: { ...this.views }
     }
+  }
+
+  get shelf(): LibraryShelf {
+    return { pinnedIds: [...this.pinnedIds], views: { ...this.views } }
   }
 
   private queuePreviews(items: MediaItem[]): void {
@@ -363,7 +380,37 @@ export class Library {
     }
 
     if (changed) await this.save()
+    if (this.pruneShelf()) await this.saveShelf()
     this.queuePreviews(added)
+  }
+
+  /** Pin ids that are not already pinned. If every id is already pinned, unpin them. */
+  async togglePins(ids: string[]): Promise<LibraryShelf> {
+    const known = ids.filter((id) => this.items.has(id))
+    if (known.length === 0) return this.shelf
+    const pinned = new Set(this.pinnedIds)
+    const allPinned = known.every((id) => pinned.has(id))
+    if (allPinned) {
+      const drop = new Set(known)
+      this.pinnedIds = this.pinnedIds.filter((id) => !drop.has(id))
+    } else {
+      const front = known.filter((id) => !pinned.has(id))
+      this.pinnedIds = [...front, ...this.pinnedIds.filter((id) => !front.includes(id))]
+    }
+    await this.saveShelf()
+    return this.shelf
+  }
+
+  /** One library-viewer open. Labs never call this. */
+  async recordLibraryView(id: string): Promise<LibraryShelf> {
+    if (!this.items.has(id)) return this.shelf
+    const current = this.views[id]
+    this.views[id] = {
+      count: (current?.count ?? 0) + 1,
+      lastViewedAt: Date.now()
+    }
+    await this.saveShelf()
+    return this.shelf
   }
 
   /** Copies files (and the media inside any folders) into the Pictures/Videos folders based on extension. */
@@ -990,6 +1037,7 @@ export class Library {
     if (result.deletedIds.length > 0) {
       await this.previews.forget(result.deletedIds)
       await this.save()
+      if (this.pruneShelf()) await this.saveShelf()
     }
     return result
   }
@@ -1029,6 +1077,56 @@ export class Library {
 
   private get databasePath(): string {
     return path.join(this.root, DATA_FOLDER, DATABASE_FILE)
+  }
+
+  private get shelfPath(): string {
+    return path.join(this.root, DATA_FOLDER, SHELF_FILE)
+  }
+
+  private pruneShelf(): boolean {
+    const known = new Set(this.items.keys())
+    const pinned = this.pinnedIds.filter((id) => known.has(id))
+    let changed = pinned.length !== this.pinnedIds.length
+    this.pinnedIds = pinned
+    for (const id of Object.keys(this.views)) {
+      if (known.has(id)) continue
+      delete this.views[id]
+      changed = true
+    }
+    return changed
+  }
+
+  private async loadShelf(): Promise<void> {
+    let raw: string
+    try {
+      raw = await fs.readFile(this.shelfPath, 'utf8')
+    } catch {
+      return
+    }
+    const parsed = JSON.parse(raw) as ShelfFile
+    this.pinnedIds = Array.isArray(parsed.pinnedIds)
+      ? parsed.pinnedIds.filter((id): id is string => typeof id === 'string')
+      : []
+    const views: Record<string, LibraryViewStats> = {}
+    if (parsed.views && typeof parsed.views === 'object') {
+      for (const [id, stats] of Object.entries(parsed.views as Record<string, Partial<LibraryViewStats>>)) {
+        const count = Math.round(Number(stats?.count))
+        const lastViewedAt = Number(stats?.lastViewedAt)
+        if (count > 0) views[id] = { count, lastViewedAt: Number.isFinite(lastViewedAt) ? lastViewedAt : 0 }
+      }
+    }
+    this.views = views
+    this.pruneShelf()
+  }
+
+  private saveShelf(): Promise<void> {
+    const write = async (): Promise<void> => {
+      const tmp = `${this.shelfPath}.tmp`
+      await fs.writeFile(tmp, JSON.stringify({ pinnedIds: this.pinnedIds, views: this.views }, null, 2), 'utf8')
+      await fs.rename(tmp, this.shelfPath)
+    }
+    this.saveQueue = this.saveQueue.then(write, write)
+    return this.saveQueue
   }
 
   private async ensureFolders(): Promise<void> {

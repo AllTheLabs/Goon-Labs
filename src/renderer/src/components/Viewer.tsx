@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pin, Trash2, X } from 'lucide-react'
 import type { MediaItem } from '../../../shared/types'
 import { formatBytes } from '../utils'
 import { MediaPreview } from './MediaPreview'
@@ -10,9 +10,11 @@ interface ViewerProps {
   onNavigate: (id: string) => void
   onClose: () => void
   onDelete: (id: string) => void
+  pinned: boolean
+  onTogglePin: (id: string) => void
 }
 
-export function Viewer({ items, index, onNavigate, onClose, onDelete }: ViewerProps) {
+export function Viewer({ items, index, onNavigate, onClose, onDelete, pinned, onTogglePin }: ViewerProps) {
   const item = items[index]
   const prev = index > 0 ? items[index - 1] : null
   const next = index < items.length - 1 ? items[index + 1] : null
@@ -23,13 +25,14 @@ export function Viewer({ items, index, onNavigate, onClose, onDelete }: ViewerPr
       else if (e.key === 'ArrowLeft' && prev) onNavigate(prev.id)
       else if (e.key === 'ArrowRight' && next) onNavigate(next.id)
       else if (e.key === 'Delete' && item) onDelete(item.id)
+      else if ((e.key === 'p' || e.key === 'P') && item) onTogglePin(item.id)
       else return
       e.preventDefault()
       e.stopPropagation()
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [item, prev, next, onNavigate, onClose, onDelete])
+  }, [item, prev, next, onNavigate, onClose, onDelete, onTogglePin])
 
   if (!item) return null
 
@@ -43,6 +46,14 @@ export function Viewer({ items, index, onNavigate, onClose, onDelete }: ViewerPr
           </span>
         </div>
         <div className="viewer-actions">
+          <button
+            className={`viewer-btn ${pinned ? 'on' : ''}`}
+            onClick={() => onTogglePin(item.id)}
+            aria-label={pinned ? 'Unpin' : 'Pin'}
+            title={pinned ? 'Unpin (P)' : 'Pin (P)'}
+          >
+            <Pin size={18} fill={pinned ? 'currentColor' : 'none'} />
+          </button>
           <button
             className="viewer-btn danger"
             onClick={() => onDelete(item.id)}

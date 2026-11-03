@@ -1,4 +1,4 @@
-import { Clock, Combine, Download, Expand, FolderSearch, Image, MousePointerClick, Repeat, Scissors, Trash2 } from 'lucide-react'
+import { Clock, Combine, Download, Expand, FolderSearch, Image, MousePointerClick, Pin, Repeat, Scissors, Trash2 } from 'lucide-react'
 import type { MediaItem } from '../../../shared/types'
 import { extensionOf, formatBytes, formatDate, mediaUrl, plural } from '../utils'
 import { MediaPreview } from './MediaPreview'
@@ -13,6 +13,8 @@ interface DetailsPanelProps {
   quickTags?: string[]
   onAddTags: (ids: string[], tags: string[]) => void
   onRemoveTag: (ids: string[], tag: string) => void
+  pinnedIds: Set<string>
+  onTogglePin: (ids: string[]) => void
   onOpenViewer: (id: string) => void
   onOpenTrimmer: (item: MediaItem) => void
   onOpenSplicer: (item: MediaItem) => void
@@ -53,6 +55,8 @@ function SingleDetails({
   quickTags,
   onAddTags,
   onRemoveTag,
+  pinnedIds,
+  onTogglePin,
   onOpenViewer,
   onOpenTrimmer,
   onOpenSplicer,
@@ -113,6 +117,10 @@ function SingleDetails({
         <button className="btn btn-secondary" onClick={() => onOpenViewer(item.id)}>
           <Expand size={16} /> View
         </button>
+        <button className="btn btn-secondary" onClick={() => onTogglePin([item.id])}>
+          <Pin size={16} fill={pinnedIds.has(item.id) ? 'currentColor' : 'none'} />
+          {pinnedIds.has(item.id) ? 'Unpin' : 'Pin'}
+        </button>
         <button className="btn btn-secondary" onClick={() => onReveal(item.id)}>
           <FolderSearch size={16} /> Show in folder
         </button>
@@ -154,10 +162,13 @@ function MultiDetails({
   quickTags,
   onAddTags,
   onRemoveTag,
+  pinnedIds,
+  onTogglePin,
   onExport,
   onDelete
 }: DetailsPanelProps) {
   const ids = items.map((item) => item.id)
+  const allPinned = items.every((item) => pinnedIds.has(item.id))
   const tagCounts = new Map<string, number>()
   for (const item of items) {
     for (const tag of item.tags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1)
@@ -208,6 +219,10 @@ function MultiDetails({
       </section>
 
       <div className="details-actions">
+        <button className="btn btn-secondary full" onClick={() => onTogglePin(ids)}>
+          <Pin size={16} fill={allPinned ? 'currentColor' : 'none'} />
+          {allPinned ? 'Unpin' : 'Pin'} {items.length} items
+        </button>
         <button className="btn btn-primary full" onClick={onExport}>
           <Download size={16} /> Export {items.length} copies…
         </button>
