@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { existsSync, promises as fs, readFileSync } from 'node:fs'
 import path from 'node:path'
-import type { DilationSpan, DiscordActivity, GifOptions, ImportSource, TrimMode } from '../shared/types'
+import type { DilationSpan, DiscordActivity, GifOptions, ImportSource, SpliceSpan, TrimMode } from '../shared/types'
 import { dismissChangelog, pendingChangelog } from './changelog'
 import { checkForUpdate, getUpdateStatus, installUpdate, onUpdateStatus } from './updater'
 import { DownloadManager } from './downloads'
@@ -253,6 +253,9 @@ function registerIpc(): void {
     'media:dilate',
     (_event, id: string, spans: DilationSpan[], mode: TrimMode, interpolate: boolean) =>
       requireLibrary().dilateVideo(id, spans, mode, interpolate)
+  )
+  ipcMain.handle('media:splice', (_event, id: string, spans: SpliceSpan[], mode: TrimMode) =>
+    requireLibrary().spliceVideo(id, spans, mode)
   )
   ipcMain.handle(
     'media:gif',

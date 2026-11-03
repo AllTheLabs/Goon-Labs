@@ -6,6 +6,7 @@ import type {
   DeleteResult,
   DilationSpan,
   ExportResult,
+  SpliceSpan,
   GifOptions,
   GifQuality,
   ImportResult,
@@ -189,6 +190,60 @@ function dilationFilter(
 
   const audio = hasAudio ? ':a=1[outv][outa]' : ':a=0[outv]'
   filters.push(`${concat.join('')}concat=n=${segs.length}:v=1${audio}`)
+  return filters.join(';')
+}
+
+interface SpliceRegion {
+  start: number
+  end: number
+}
+
+function normalizeSpliceSpans(spans: SpliceSpan[]): SpliceRegion[] {
+  if (!Array.isArray(spans) || spans.length < 2) {
+    throw new Error('Add at least two spans on the timeline')
+  }
+  const regions = spans.map((span) => {
+    const start = Number(span.start)
+    const end = Number(span.end)
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < 0.1) {
+      throw new Error('Each span needs to cover at least a tenth of a second')
+    }
+    return { start: Math.max(0, start), end }
+  })
+  regions.sort((a, b) => a.start - b.start)
+  for (let i = 1; i < regions.length; i++) {
+    if (regions[i].start < regions[i - 1].end - 0.001) {
+      throw new Error('Spans cannot overlap')
+    }
+  }
+  return regions
+}
+
+function spliceFilter(regions: SpliceRegion[], hasAudio: boolean, fps: number): string {
+  const ts = (value: number) => value.toFixed(3)
+  const fpsStr = String(Number(fps.toFixed(3)))
+  const even = 'scale=trunc(iw/2)*2:trunc(ih/2)*2'
+  const aformat = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo'
+  const filters: string[] = []
+  const concat: string[] = []
+
+  regions.forEach((seg, i) => {
+    filters.push(
+      `[0:v]trim=start=${ts(seg.start)}:end=${ts(seg.end)},setpts=PTS-STARTPTS,format=yuv420p,${even},fps=${fpsStr}[v${i}]`
+    )
+    concat.push(`[v${i}]`)
+    if (!hasAudio) return
+    const outDur = seg.end - seg.start
+    const fade = Math.min(0.05, Math.max(0.01, outDur / 4))
+    const fades = `afade=t=in:d=${ts(fade)},afade=t=out:st=${ts(Math.max(0, outDur - fade))}:d=${ts(fade)}`
+    filters.push(
+      `[0:a]atrim=start=${ts(seg.start)}:end=${ts(seg.end)},asetpts=PTS-STARTPTS,${aformat},${fades}[a${i}]`
+    )
+    concat.push(`[a${i}]`)
+  })
+
+  const audio = hasAudio ? ':a=1[outv][outa]' : ':a=0[outv]'
+  filters.push(`${concat.join('')}concat=n=${regions.length}:v=1${audio}`)
   return filters.join(';')
 }
 
@@ -573,6 +628,113 @@ export class Library {
     item.size = stat.size
     item.importedAt = new Date().toISOString()
     item.tags = tags
+    await this.save()
+    await this.previews.forget([item.id])
+    this.queuePreviews([item])
+    return { item, replaced: true }
+  }
+
+  /**
+   * Keeps only the marked spans and stitches them in timeline order.
+   * `new` writes a sibling file; `replace` overwrites the original. Both keep
+   * the original tags.
+   */
+  async spliceVideo(
+    id: string,
+    spans: SpliceSpan[],
+    mode: TrimMode
+  ): Promise<{ item: MediaItem; replaced: boolean }> {
+    const item = this.items.get(id)
+    if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
+    const source = this.absolutePathOf(id)
+    if (!source) throw new Error('The video file is missing')
+    if (!FFMPEG) throw new Error('ffmpeg is not available')
+
+    const regions = normalizeSpliceSpans(spans)
+    const { duration, hasAudio, fps } = await probeVideo(source)
+    if (!Number.isFinite(duration) || duration < 0.1) throw new Error('Could not read that video')
+    for (const region of regions) {
+      region.start = Math.min(region.start, duration)
+      region.end = Math.min(region.end, duration)
+      if (region.end - region.start < 0.1) {
+        throw new Error('A span sits past the end of the video')
+      }
+    }
+
+    const encoder = await h264EncodeArgs()
+    const dir = path.dirname(source)
+    const stem = path.parse(item.fileName).name
+
+    const encodeTo = async (dest: string) => {
+      await runFfmpeg([
+        '-y',
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-i',
+        source,
+        '-filter_complex',
+        spliceFilter(regions, hasAudio, fps),
+        '-map',
+        '[outv]',
+        ...(hasAudio ? ['-map', '[outa]'] : ['-an']),
+        ...encoder,
+        '-pix_fmt',
+        'yuv420p',
+        ...(hasAudio ? ['-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-ar', '48000'] : []),
+        '-movflags',
+        '+faststart',
+        dest
+      ])
+    }
+
+    if (mode === 'new') {
+      const dest = await uniqueDest(dir, `${stem} (spliced).mp4`)
+      try {
+        await encodeTo(dest)
+      } catch (err) {
+        await fs.rm(dest, { force: true })
+        throw err
+      }
+      const stat = await fs.stat(dest)
+      const next: MediaItem = {
+        id: randomUUID(),
+        fileName: path.basename(dest),
+        relPath: toRelPath(this.root, dest),
+        type: 'video',
+        size: stat.size,
+        importedAt: new Date().toISOString(),
+        tags: [...item.tags]
+      }
+      this.items.set(next.id, next)
+      await this.save()
+      this.queuePreviews([next])
+      return { item: next, replaced: false }
+    }
+
+    const temp = await uniqueDest(dir, `${stem}.splice.tmp.mp4`)
+    try {
+      await encodeTo(temp)
+    } catch (err) {
+      await fs.rm(temp, { force: true })
+      throw err
+    }
+    const finalPath = source.toLowerCase().endsWith('.mp4') ? source : await uniqueDest(dir, `${stem}.mp4`)
+    try {
+      await fs.rm(source)
+      await fs.rename(temp, finalPath)
+    } catch (err) {
+      await fs.rm(temp, { force: true })
+      throw new Error(
+        `Could not replace the original (${(err as Error).message}). Save as a new video instead.`
+      )
+    }
+
+    const stat = await fs.stat(finalPath)
+    item.fileName = path.basename(finalPath)
+    item.relPath = toRelPath(this.root, finalPath)
+    item.size = stat.size
+    item.importedAt = new Date().toISOString()
     await this.save()
     await this.previews.forget([item.id])
     this.queuePreviews([item])

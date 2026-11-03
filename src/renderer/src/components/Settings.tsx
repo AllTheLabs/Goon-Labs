@@ -34,6 +34,13 @@ const TRIMMER_KEYS: [string, string][] = [
   ['Esc', 'Close']
 ]
 
+const SPLICER_KEYS: [string, string][] = [
+  ['Space', 'Play / pause (kept spans only)'],
+  ['Delete', 'Remove the selected span (keeps at least two)'],
+  ['Enter', 'Open the selected video'],
+  ['Esc', 'Close']
+]
+
 const DILATION_KEYS: [string, string][] = [
   ['Space', 'Play / pause'],
   ['Delete', 'Remove the selected span'],
@@ -275,6 +282,7 @@ export function Settings({ onClose }: SettingsProps) {
           <KeyTable title="Pixel Perfection" rows={PIXEL_KEYS} />
           <KeyTable title="Hypno Station" rows={HYPNO_KEYS} />
           <KeyTable title="Trimmer" rows={TRIMMER_KEYS} />
+          <KeyTable title="Splicer" rows={SPLICER_KEYS} />
           <KeyTable title="Time Dilation" rows={DILATION_KEYS} />
           <KeyTable title="Goon Image Format" rows={GIF_KEYS} />
         </div>

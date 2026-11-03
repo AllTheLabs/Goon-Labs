@@ -120,6 +120,12 @@ export interface DilationSpan {
   factor: DilationFactor
 }
 
+/** One keep-span on a Splicer timeline. */
+export interface SpliceSpan {
+  start: number
+  end: number
+}
+
 export const GIF_QUALITIES = ['low', 'medium', 'high', 'ultra'] as const
 export type GifQuality = (typeof GIF_QUALITIES)[number]
 
@@ -178,6 +184,7 @@ export interface MediaApi {
   chooseSessionDir(): Promise<string | null>
   trimVideo(id: string, start: number, end: number, mode: TrimMode): Promise<TrimResult>
   dilateVideo(id: string, spans: DilationSpan[], mode: TrimMode, interpolate: boolean): Promise<TrimResult>
+  spliceVideo(id: string, spans: SpliceSpan[], mode: TrimMode): Promise<TrimResult>
   makeGif(id: string, start: number, end: number, options: GifOptions, mode: TrimMode): Promise<TrimResult>
   /** NudeNet ONNX weights for on-device Pixel Perfection detection. */
   getPixelModel(): Promise<ArrayBuffer>

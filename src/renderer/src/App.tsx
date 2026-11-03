@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Search,
   Scissors,
+  Combine,
   SearchX,
   TagX,
   Trash2,
@@ -39,6 +40,8 @@ import { GifMaker } from './components/GifMaker'
 import { GifSetup } from './components/GifSetup'
 import { TimeDilation } from './components/TimeDilation'
 import { TimeDilationSetup } from './components/TimeDilationSetup'
+import { Splicer } from './components/Splicer'
+import { SplicerSetup } from './components/SplicerSetup'
 import { Trimmer } from './components/Trimmer'
 import { TrimmerSetup } from './components/TrimmerSetup'
 import { ThemePicker } from './components/ThemePicker'
@@ -101,6 +104,7 @@ export function App() {
     'setup' | { entries: QueueEntry[]; settings: HypnoSettings; launch: LabPrefs } | null
   >(null)
   const [trimmer, setTrimmer] = useState<'pick' | MediaItem | null>(null)
+  const [splicer, setSplicer] = useState<'pick' | MediaItem | null>(null)
   const [dilation, setDilation] = useState<'pick' | MediaItem | null>(null)
   const [gifMaker, setGifMaker] = useState<'pick' | MediaItem | null>(null)
   const [themesOpen, setThemesOpen] = useState(false)
@@ -438,6 +442,7 @@ export function App() {
   const closePixel = useCallback(() => setPixel(null), [])
   const closeHypno = useCallback(() => setHypno(null), [])
   const closeTrimmer = useCallback(() => setTrimmer(null), [])
+  const closeSplicer = useCallback(() => setSplicer(null), [])
   const closeDilation = useCallback(() => setDilation(null), [])
   const closeGif = useCallback(() => setGifMaker(null), [])
   const finishTrim = useCallback(
@@ -452,6 +457,21 @@ export function App() {
       setSelected(new Set([item.id]))
       setActiveId(item.id)
       setTrimmer(null)
+    },
+    [mergeItems, notify]
+  )
+  const finishSplice = useCallback(
+    (item: MediaItem, replaced: boolean) => {
+      if (replaced) {
+        mergeItems([item])
+        notify('success', 'Video spliced', item.fileName)
+      } else {
+        setLibrary((lib) => lib && { ...lib, items: [...lib.items, item] })
+        notify('success', 'Spliced copy saved', item.fileName)
+      }
+      setSelected(new Set([item.id]))
+      setActiveId(item.id)
+      setSplicer(null)
     },
     [mergeItems, notify]
   )
@@ -522,7 +542,7 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (viewerId || scroller || queue || pixel || hypno || trimmer || dilation || gifMaker || themesOpen || settingsOpen || urlImportOpen || isTypingTarget(e.target)) return
+      if (viewerId || scroller || queue || pixel || hypno || trimmer || splicer || dilation || gifMaker || themesOpen || settingsOpen || urlImportOpen || isTypingTarget(e.target)) return
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         e.preventDefault()
         setUrlImportOpen(true)
@@ -547,6 +567,7 @@ export function App() {
     pixel,
     hypno,
     trimmer,
+    splicer,
     dilation,
     gifMaker,
     themesOpen,
@@ -690,6 +711,7 @@ export function App() {
         onOpenPixel={() => setPixel('setup')}
         onOpenHypno={() => setHypno('setup')}
         onOpenTrimmer={() => setTrimmer('pick')}
+        onOpenSplicer={() => setSplicer('pick')}
         onOpenTimeDilation={() => setDilation('pick')}
         onOpenGif={() => setGifMaker('pick')}
         onOpenThemes={() => setThemesOpen(true)}
@@ -814,6 +836,9 @@ export function App() {
               <button className="btn btn-secondary btn-sm" onClick={() => setTrimmer(selectedItems[0])}>
                 <Scissors size={14} /> Trim
               </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setSplicer(selectedItems[0])}>
+                <Combine size={14} /> Splice
+              </button>
               <button className="btn btn-secondary btn-sm" onClick={() => setDilation(selectedItems[0])}>
                 <Clock size={14} /> Dilate
               </button>
@@ -895,6 +920,7 @@ export function App() {
         onRemoveTag={removeTag}
         onOpenViewer={setViewerId}
         onOpenTrimmer={(item) => setTrimmer(item)}
+        onOpenSplicer={(item) => setSplicer(item)}
         onOpenTimeDilation={(item) => setDilation(item)}
         onOpenGif={(item) => setGifMaker(item)}
         onReveal={(id) => window.api.revealItem(id)}
@@ -998,6 +1024,23 @@ export function App() {
           onClose={closeTrimmer}
           onPickAnother={() => setTrimmer('pick')}
           onSaved={finishTrim}
+        />
+      )}
+
+      {splicer === 'pick' && (
+        <SplicerSetup
+          videos={items.filter((item) => item.type === 'video')}
+          initialId={selectedItems.length === 1 && selectedItems[0].type === 'video' ? selectedItems[0].id : null}
+          onPick={setSplicer}
+          onClose={closeSplicer}
+        />
+      )}
+      {splicer && splicer !== 'pick' && (
+        <Splicer
+          item={splicer}
+          onClose={closeSplicer}
+          onPickAnother={() => setSplicer('pick')}
+          onSaved={finishSplice}
         />
       )}
 

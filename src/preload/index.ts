@@ -57,6 +57,7 @@ const api: MediaApi = {
   trimVideo: (id, start, end, mode) => ipcRenderer.invoke('media:trim', id, start, end, mode),
   dilateVideo: (id, spans, mode, interpolate) =>
     ipcRenderer.invoke('media:dilate', id, spans, mode, interpolate),
+  spliceVideo: (id, spans, mode) => ipcRenderer.invoke('media:splice', id, spans, mode),
   makeGif: (id, start, end, options, mode) =>
     ipcRenderer.invoke('media:gif', id, start, end, options, mode),
   getPixelModel: () => ipcRenderer.invoke('pixel:model')

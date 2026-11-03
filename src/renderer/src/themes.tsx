@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import {
   Clapperboard,
   Clock,
+  Combine,
   Disc3,
   Droplet,
   Hash,
@@ -91,6 +92,7 @@ export interface ThemeCopy {
   hypnoStation: string
   utilitiesHeading: string
   trimmer: string
+  splicer: string
   timeDilation: string
   goonImageFormat: string
   tagsHeading: string
@@ -110,6 +112,7 @@ export interface ThemeIcons {
   pixelPerfection: Icon
   hypnoStation: Icon
   trimmer: Icon
+  splicer: Icon
   timeDilation: Icon
   goonImageFormat: Icon
   live?: Icon
@@ -149,6 +152,7 @@ const DEFAULT_COPY: ThemeCopy = {
   hypnoStation: 'Hypno Station',
   utilitiesHeading: 'Utilities',
   trimmer: 'Trimmer',
+  splicer: 'Splicer',
   timeDilation: 'Time Dilation',
   goonImageFormat: 'Goon Image Format',
   tagsHeading: 'Tags',
@@ -168,6 +172,7 @@ const DEFAULT_ICONS: ThemeIcons = {
   pixelPerfection: Grid3x3,
   hypnoStation: HypnoSpiral,
   trimmer: Scissors,
+  splicer: Combine,
   timeDilation: Clock,
   goonImageFormat: Image
 }
