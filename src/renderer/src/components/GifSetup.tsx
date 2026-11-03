@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Image, Search, X } from 'lucide-react'
 import type { MediaItem } from '../../../shared/types'
 import { useTheme } from '../themes'
-import { mediaUrl, plural } from '../utils'
+import { plural } from '../utils'
 import { LabTagPicker } from './LabTagPicker'
 import { matchVideos } from './ScrollerSetup'
 import type { TagMatch } from './ScrollerSetup'
+import { VideoPickThumb } from './VideoPickThumb'
 
 interface GifSetupProps {
   videos: MediaItem[]
@@ -104,7 +105,7 @@ export function GifSetup({ videos, initialId, onPick, onClose }: GifSetupProps) 
             />
             {selected && (
               <div className="trimmer-pick-preview">
-                <video src={`${mediaUrl(selected)}#t=0.5`} muted preload="metadata" playsInline />
+                <VideoPickThumb item={selected} size="preview" />
                 <div className="trimmer-pick-preview-meta">
                   <strong>{selected.fileName}</strong>
                   {selected.tags.length > 0 && <span>{selected.tags.join(' · ')}</span>}
@@ -122,13 +123,7 @@ export function GifSetup({ videos, initialId, onPick, onClose }: GifSetupProps) 
                     onClick={() => setSelectedId(video.id)}
                     onDoubleClick={() => onPick(video)}
                   >
-                    <video
-                      className="trimmer-row-thumb"
-                      src={`${mediaUrl(video)}#t=0.5`}
-                      muted
-                      preload="metadata"
-                      playsInline
-                    />
+                    <VideoPickThumb item={video} size="row" />
                     <span className="queue-row-text">
                       <span className="queue-row-name">{video.fileName}</span>
                       {video.tags.length > 0 && (
