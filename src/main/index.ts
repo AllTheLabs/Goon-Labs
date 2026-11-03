@@ -1,5 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
-import { existsSync, promises as fs } from 'node:fs'
+import { existsSync, promises as fs, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { DilationSpan, GifOptions, ImportSource, TrimMode } from '../shared/types'
 import { DownloadManager } from './downloads'
@@ -13,6 +13,8 @@ interface AppConfig {
   repositoryPath?: string
   sessionDir?: string
   lastSessionDir?: string
+  /** Draw the window with the CPU. ffmpeg jobs (Time Dilation, etc.) still use the GPU. */
+  softwareWindow?: boolean
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -37,6 +39,17 @@ registerMediaScheme()
 }
 
 const configPath = (): string => path.join(app.getPath('userData'), 'config.json')
+
+function readConfigSync(): AppConfig {
+  try {
+    return JSON.parse(readFileSync(configPath(), 'utf8')) as AppConfig
+  } catch {
+    return {}
+  }
+}
+
+const softwareWindowActive = Boolean(readConfigSync().softwareWindow)
+if (softwareWindowActive) app.disableHardwareAcceleration()
 
 async function readConfig(): Promise<AppConfig> {
   try {
@@ -199,7 +212,20 @@ function registerIpc(): void {
 
   ipcMain.handle('settings:get', async () => {
     const config = await readConfig()
-    return { sessionDir: config.sessionDir ?? null }
+    return {
+      sessionDir: config.sessionDir ?? null,
+      softwareWindow: Boolean(config.softwareWindow),
+      softwareWindowActive
+    }
+  })
+  ipcMain.handle('settings:set-software-window', async (_event, enabled: boolean) => {
+    const config = await readConfig()
+    await writeConfig({ ...config, softwareWindow: Boolean(enabled) })
+    return Boolean(enabled)
+  })
+  ipcMain.handle('app:relaunch', () => {
+    app.relaunch()
+    app.exit(0)
   })
   ipcMain.handle('media:trim', (_event, id: string, start: number, end: number, mode: TrimMode) =>
     requireLibrary().trimVideo(id, start, end, mode)

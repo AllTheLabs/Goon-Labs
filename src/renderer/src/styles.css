@@ -1337,8 +1337,13 @@ p {
 .scroller-info {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 1px;
-  max-width: 220px;
+  flex: 0 0 168px;
+  width: 168px;
+  min-width: 168px;
+  max-width: 168px;
+  overflow: hidden;
 }
 .scroller-tags {
   display: flex;
@@ -1346,6 +1351,8 @@ p {
   font-weight: 600;
   font-size: 13px;
   overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
 }
 .scroller-tags > span {
   display: inline-flex;
@@ -1355,10 +1362,14 @@ p {
 .scroller-count {
   font-size: 11px;
   color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .scroller-divider {
   width: 1px;
   height: 26px;
+  flex-shrink: 0;
   background: rgba(255, 255, 255, 0.12);
 }
 .scroller-slider {
@@ -1411,6 +1422,9 @@ p {
   font-weight: 600;
 }
 
+.scroller-controls > :not(.scroller-info) {
+  flex-shrink: 0;
+}
 .lab-tools {
   display: flex;
   align-items: center;
@@ -2161,9 +2175,10 @@ button.queue-row:hover .queue-row-add {
   pointer-events: none;
 }
 .queue-now {
-  max-width: 220px;
   display: block;
+  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .queue-beat-picker {
   background: rgba(255, 255, 255, 0.06);

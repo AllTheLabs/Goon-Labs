@@ -70,6 +70,9 @@ export interface DownloaderInfo {
 
 export interface AppSettings {
   sessionDir: string | null
+  softwareWindow: boolean
+  /** What this process actually launched with. A toggle change needs a restart. */
+  softwareWindowActive: boolean
 }
 
 export type TrimMode = 'new' | 'replace'
@@ -133,6 +136,8 @@ export interface MediaApi {
   revealPath(filePath: string): Promise<void>
   getWindowSourceId(): Promise<string | null>
   getAppSettings(): Promise<AppSettings>
+  setSoftwareWindow(enabled: boolean): Promise<boolean>
+  relaunchApp(): Promise<void>
   chooseSessionDir(): Promise<string | null>
   trimVideo(id: string, start: number, end: number, mode: TrimMode): Promise<TrimResult>
   dilateVideo(id: string, spans: DilationSpan[], mode: TrimMode, interpolate: boolean): Promise<TrimResult>

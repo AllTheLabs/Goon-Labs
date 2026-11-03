@@ -32,7 +32,7 @@ The main window is a grid of everything in the repository. Search names and tags
 - **Enter** opens the viewer, **Delete** moves files to the Recycle Bin, **Export** copies the selection somewhere else.
 - With one video selected, **Trim**, **Dilate**, and **GIF** on the selection bar (and in the details panel) open those utilities directly.
 
-The gear in the sidebar opens **Settings**: default folder for lab recordings, whether labs should start recording / webcam on, and a keybind guide.
+The gear in the sidebar opens **Settings**: default folder for lab recordings, whether labs should start recording / webcam on, a **Software window rendering** toggle (CPU draws the window; ffmpeg jobs such as Time Dilation still use the GPU), and a keybind guide. That display toggle needs a restart.
 
 ## Labs
 

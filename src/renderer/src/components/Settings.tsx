@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FolderOpen, FolderSearch, Settings as SettingsIcon, X } from 'lucide-react'
+import { FolderOpen, FolderSearch, RefreshCw, Settings as SettingsIcon, X } from 'lucide-react'
 import { loadLabPrefs, saveLabPrefs } from '../labPrefs'
 import type { LabPrefs } from '../labPrefs'
 
@@ -106,10 +106,16 @@ function KeyTable({ title, rows }: { title: string; rows: [string, string][] }) 
 
 export function Settings({ onClose }: SettingsProps) {
   const [sessionDir, setSessionDir] = useState<string | null>(null)
+  const [softwareWindow, setSoftwareWindow] = useState(false)
+  const [softwareWindowActive, setSoftwareWindowActive] = useState(false)
   const [prefs, setPrefs] = useState(loadLabPrefs)
 
   useEffect(() => {
-    window.api.getAppSettings().then((settings) => setSessionDir(settings.sessionDir))
+    window.api.getAppSettings().then((settings) => {
+      setSessionDir(settings.sessionDir)
+      setSoftwareWindow(settings.softwareWindow)
+      setSoftwareWindowActive(settings.softwareWindowActive)
+    })
   }, [])
 
   useEffect(() => {
@@ -168,6 +174,33 @@ export function Settings({ onClose }: SettingsProps) {
         <section className="settings-block">
           <h3>When a lab opens</h3>
           <LabPrefToggles value={prefs} onChange={updatePrefs} />
+        </section>
+
+        <section className="settings-block">
+          <h3>Display</h3>
+          <label className={`endless-toggle ${softwareWindow ? 'on' : ''}`}>
+            <input
+              type="checkbox"
+              checked={softwareWindow}
+              onChange={async (e) => {
+                const on = e.target.checked
+                setSoftwareWindow(on)
+                await window.api.setSoftwareWindow(on)
+              }}
+            />
+            <span>
+              <strong>Software window rendering</strong>
+              <small>
+                Draw the app window on the CPU. Fixes flicker and leftover images on some graphics
+                drivers. Time Dilation and other ffmpeg jobs still use the GPU if they can.
+              </small>
+            </span>
+          </label>
+          {softwareWindow !== softwareWindowActive && (
+            <button className="btn btn-secondary btn-sm" onClick={() => window.api.relaunchApp()}>
+              <RefreshCw size={14} /> Restart Goon Labs to apply
+            </button>
+          )}
         </section>
 
         <div className="settings-key-grid">
