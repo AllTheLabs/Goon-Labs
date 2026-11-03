@@ -71,10 +71,12 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
   const [paused, setPaused] = useState(false)
   const [speed, setSpeed] = useState(settings.speed)
   const [rumble, setRumble] = useState(settings.rumble)
-  const [effects, setEffects] = useEffectSettings('hypno.effects', {
+  const [effects, setEffects] = useEffectSettings('hypno.effects.v2', {
     ...DEFAULT_EFFECTS,
     spiral: true,
-    tint: true
+    tint: true,
+    opacity: 0.15,
+    spiralThickness: 0.04
   })
   const [effectsPanelOpen, setEffectsPanelOpen] = useState(false)
   const [volume, setVolume] = useState(0.8)
