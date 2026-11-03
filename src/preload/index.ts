@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { DownloadJob, MediaApi, PreviewReadyEvent } from '../shared/types'
+import type { AppUpdateStatus, DownloadJob, MediaApi, PreviewReadyEvent } from '../shared/types'
 
 const api: MediaApi = {
   getLibrary: () => ipcRenderer.invoke('library:get'),
@@ -41,6 +41,14 @@ const api: MediaApi = {
   setSoftwareWindow: (enabled) => ipcRenderer.invoke('settings:set-software-window', enabled),
   setDiscordRichPresence: (enabled) => ipcRenderer.invoke('settings:set-discord-presence', enabled),
   setDiscordActivity: (activity) => ipcRenderer.invoke('discord:set-activity', activity),
+  getUpdateStatus: () => ipcRenderer.invoke('update:status'),
+  checkForUpdate: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdateStatus: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus) => listener(status)
+    ipcRenderer.on('update:status', handler)
+    return () => ipcRenderer.removeListener('update:status', handler)
+  },
   relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
   chooseSessionDir: () => ipcRenderer.invoke('settings:choose-session-dir'),
   trimVideo: (id, start, end, mode) => ipcRenderer.invoke('media:trim', id, start, end, mode),

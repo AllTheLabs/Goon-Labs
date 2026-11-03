@@ -76,6 +76,13 @@ export interface AppSettings {
   discordRichPresence: boolean
 }
 
+export type AppUpdateStatus =
+  | { state: 'idle'; currentVersion: string }
+  | { state: 'available'; currentVersion: string; version: string }
+  | { state: 'downloading'; currentVersion: string; version: string; progress: number }
+  | { state: 'ready'; currentVersion: string; version: string }
+  | { state: 'error'; currentVersion: string; message: string }
+
 /** What Discord Rich Presence should show right now. */
 export interface DiscordActivity {
   /** Canonical lab name, or null when not in a lab. */
@@ -147,6 +154,10 @@ export interface MediaApi {
   setSoftwareWindow(enabled: boolean): Promise<boolean>
   setDiscordRichPresence(enabled: boolean): Promise<boolean>
   setDiscordActivity(activity: DiscordActivity): Promise<void>
+  getUpdateStatus(): Promise<AppUpdateStatus>
+  checkForUpdate(): Promise<AppUpdateStatus>
+  installUpdate(): Promise<AppUpdateStatus>
+  onUpdateStatus(listener: (status: AppUpdateStatus) => void): () => void
   relaunchApp(): Promise<void>
   chooseSessionDir(): Promise<string | null>
   trimVideo(id: string, start: number, end: number, mode: TrimMode): Promise<TrimResult>

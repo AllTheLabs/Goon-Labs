@@ -2,6 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { existsSync, promises as fs, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { DilationSpan, DiscordActivity, GifOptions, ImportSource, TrimMode } from '../shared/types'
+import { checkForUpdate, getUpdateStatus, installUpdate, onUpdateStatus } from './updater'
 import { DownloadManager } from './downloads'
 import { Library } from './library'
 import { IMAGE_EXTENSIONS, VIDEO_EXTENSIONS } from './mediaTypes'
@@ -260,6 +261,10 @@ function registerIpc(): void {
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
   })
 
+  ipcMain.handle('update:status', () => getUpdateStatus())
+  ipcMain.handle('update:check', () => checkForUpdate())
+  ipcMain.handle('update:install', () => installUpdate())
+
   ipcMain.handle('settings:choose-session-dir', async () => {
     const config = await readConfig()
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow!, {
@@ -311,6 +316,8 @@ app.whenReady().then(async () => {
   installCapturePermissions()
   registerIpc()
   createWindow()
+  onUpdateStatus((status) => mainWindow?.webContents.send('update:status', status))
+  void checkForUpdate()
   const config = await readConfig()
   if (config.discordRichPresence) setDiscordEnabled(true)
 

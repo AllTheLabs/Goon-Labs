@@ -467,6 +467,10 @@ p {
 .toolbar-spacer {
   flex: 1;
 }
+.toolbar-update {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .search {
   position: relative;
   flex: 0 1 380px;

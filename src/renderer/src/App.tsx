@@ -49,6 +49,7 @@ import { Toasts } from './components/Toasts'
 import type { Toast, ToastKind } from './components/Toasts'
 import { Viewer } from './components/Viewer'
 import { Welcome } from './components/Welcome'
+import { useAppUpdate } from './appUpdate'
 import { useDiscordPresence } from './discordPresence'
 import { plural } from './utils'
 
@@ -599,6 +600,7 @@ export function App() {
             ? 'Scroller'
             : null
   useDiscordPresence(activeLab)
+  const update = useAppUpdate()
 
   if (loading) {
     return (
@@ -661,6 +663,26 @@ export function App() {
 
       <main className="main">
         <header className="toolbar">
+          {(update.state === 'available' ||
+            update.state === 'downloading' ||
+            update.state === 'ready') && (
+            <button
+              className="btn btn-primary toolbar-update"
+              disabled={update.state !== 'available'}
+              onClick={() => void window.api.installUpdate()}
+              title={`Download Goon Labs ${update.version} and install it`}
+            >
+              {update.state === 'available' ? (
+                <Download size={16} />
+              ) : (
+                <Loader2 className="spin" size={16} />
+              )}
+              {update.state === 'available' && `Update to ${update.version}`}
+              {update.state === 'downloading' &&
+                `Downloading ${Math.round(update.progress * 100)}%`}
+              {update.state === 'ready' && 'Installing…'}
+            </button>
+          )}
           <div className="search">
             <Search size={16} className="search-icon" />
             <input

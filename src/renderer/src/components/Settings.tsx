@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { FolderOpen, FolderSearch, RefreshCw, Settings as SettingsIcon, X } from 'lucide-react'
+import { Download, FolderOpen, FolderSearch, Loader2, RefreshCw, Settings as SettingsIcon, X } from 'lucide-react'
+import { useAppUpdate } from '../appUpdate'
 import { loadLabPrefs, saveLabPrefs } from '../labPrefs'
 import type { LabPrefs } from '../labPrefs'
 
@@ -111,6 +112,8 @@ export function Settings({ onClose }: SettingsProps) {
   const [softwareWindowActive, setSoftwareWindowActive] = useState(false)
   const [discordRichPresence, setDiscordRichPresence] = useState(false)
   const [prefs, setPrefs] = useState(loadLabPrefs)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const update = useAppUpdate()
 
   useEffect(() => {
     window.api.getAppSettings().then((settings) => {
@@ -147,6 +150,40 @@ export function Settings({ onClose }: SettingsProps) {
             <X size={18} />
           </button>
         </header>
+
+        <section className="settings-block">
+          <h3>Updates</h3>
+          <p className="hint">
+            This copy is {update.currentVersion || '…'}. Goon Labs checks GitHub Releases for a newer
+            installer when it starts. Nothing from your library is sent.
+          </p>
+          {update.state === 'available' && (
+            <button className="btn btn-primary btn-sm" onClick={() => void window.api.installUpdate()}>
+              <Download size={14} /> Download {update.version} and install
+            </button>
+          )}
+          {update.state === 'downloading' && (
+            <p className="hint">
+              <Loader2 className="spin" size={14} /> Downloading {Math.round(update.progress * 100)}%
+            </p>
+          )}
+          {update.state === 'ready' && <p className="hint">Starting the installer…</p>}
+          {update.state === 'error' && <p className="hint">{update.message}</p>}
+          {(update.state === 'idle' || update.state === 'error') && (
+            <button
+              className="btn btn-secondary btn-sm"
+              disabled={checkingUpdate}
+              onClick={async () => {
+                setCheckingUpdate(true)
+                await window.api.checkForUpdate()
+                setCheckingUpdate(false)
+              }}
+            >
+              {checkingUpdate ? <Loader2 className="spin" size={14} /> : <RefreshCw size={14} />}
+              Check for updates
+            </button>
+          )}
+        </section>
 
         <section className="settings-block">
           <h3>Session recordings</h3>

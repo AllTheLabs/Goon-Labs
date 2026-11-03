@@ -8,6 +8,16 @@ Everything stays on this computer. There is no account, no cloud, and nothing is
 
 Run `Goon-Labs-Setup-<version>.exe`. The installer is per-user by default and can put shortcuts on the desktop and Start menu.
 
+When a newer installer is on [GitHub Releases](https://github.com/AllTheLabs/Goon-Labs/releases), an **Update** button appears at the top of the library. It downloads that installer and runs it. You can also check from Settings.
+
+Each GitHub release needs these files from `dist/` after `npm run dist`:
+
+| File | Purpose |
+| --- | --- |
+| `Goon-Labs-Setup-<version>.exe` | Installer |
+| `Goon-Labs-Setup-<version>.exe.blockmap` | Lets updates download only what changed |
+| `latest.yml` | Tells the app which installer is current |
+
 ## First launch
 
 The window opens **maximized**. Pick a **repository** folder. That folder is the library root. There is also an optional **Show Goon Labs on Discord** checkbox; it stays off unless you tick it. Goon Labs creates:
@@ -125,7 +135,7 @@ Full tables live in Settings. The ones you will hit most:
 
 ## Privacy
 
-Goon Labs is a local app. Media, tags, settings, and recordings stay in folders you choose on this machine. URL import talks to the sites you paste (and to yt-dlp’s GitHub releases when the downloader needs an update). Pixel Perfection downloads a local detector model on first use; video frames stay on this machine. Discord Rich Presence, when you turn it on, talks only to the Discord desktop app on this machine so friends can see AllTheLabs is open — not your library. There is no analytics account and no Goon Labs server.
+Goon Labs is a local app. Media, tags, settings, and recordings stay in folders you choose on this machine. URL import talks to the sites you paste (and to yt-dlp’s GitHub releases when the downloader needs an update). Pixel Perfection downloads a local detector model on first use; video frames stay on this machine. On startup it checks GitHub Releases (`latest.yml`) for a newer installer; that only reads the public release list. Discord Rich Presence, when you turn it on, talks only to the Discord desktop app on this machine so friends can see AllTheLabs is open — not your library. There is no analytics account and no Goon Labs server.
 
 ## Running from source
 
