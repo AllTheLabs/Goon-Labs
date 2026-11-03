@@ -48,6 +48,13 @@ const DILATION_KEYS: [string, string][] = [
   ['Esc', 'Close']
 ]
 
+const LOOP_KEYS: [string, string][] = [
+  ['Space', 'Play / pause'],
+  ['L', 'Find a seamless loop'],
+  ['Enter', 'Open the selected video'],
+  ['Esc', 'Close']
+]
+
 const GIF_KEYS: [string, string][] = [
   ['Space', 'Play / pause'],
   ['Enter', 'Open the selected video'],
@@ -283,6 +290,7 @@ export function Settings({ onClose }: SettingsProps) {
           <KeyTable title="Hypno Station" rows={HYPNO_KEYS} />
           <KeyTable title="Trimmer" rows={TRIMMER_KEYS} />
           <KeyTable title="Splicer" rows={SPLICER_KEYS} />
+          <KeyTable title="Goon Loop" rows={LOOP_KEYS} />
           <KeyTable title="Time Dilation" rows={DILATION_KEYS} />
           <KeyTable title="Goon Image Format" rows={GIF_KEYS} />
         </div>

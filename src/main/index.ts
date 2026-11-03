@@ -249,6 +249,9 @@ function registerIpc(): void {
   ipcMain.handle('media:trim', (_event, id: string, start: number, end: number, mode: TrimMode) =>
     requireLibrary().trimVideo(id, start, end, mode)
   )
+  ipcMain.handle('media:loop', (_event, id: string, start: number, end: number, mode: TrimMode) =>
+    requireLibrary().loopVideo(id, start, end, mode)
+  )
   ipcMain.handle(
     'media:dilate',
     (_event, id: string, spans: DilationSpan[], mode: TrimMode, interpolate: boolean) =>

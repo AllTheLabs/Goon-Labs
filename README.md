@@ -1,6 +1,6 @@
 # Goon Labs
 
-A Windows desktop app for a personal photo and video library. Import media, tag it, browse it, and play it in full-screen labs. Trim, splice, time-dilate, or turn clips into GIFs without leaving the app.
+A Windows desktop app for a personal photo and video library. Import media, tag it, browse it, and play it in full-screen labs. Trim, splice, loop, time-dilate, or turn clips into GIFs without leaving the app.
 
 Everything stays on this computer. There is no account, no cloud, and nothing is uploaded.
 
@@ -40,7 +40,7 @@ The main window is a grid of everything in the repository. Search names and tags
 - Click an item to select it. Ctrl/Shift-click for several. The right-hand panel shows a preview, tags, size, and actions.
 - Tags are lowercase. Filter the grid from the sidebar, or use **Untagged** to work through files that have none yet.
 - **Enter** opens the viewer, **Delete** moves files to the Recycle Bin, **Export** copies the selection somewhere else.
-- With one video selected, **Trim**, **Splice**, **Dilate**, and **GIF** on the selection bar (and in the details panel) open those utilities directly.
+- With one video selected, **Trim**, **Splice**, **Loop**, **Dilate**, and **GIF** on the selection bar (and in the details panel) open those utilities directly.
 
 The gear in the sidebar opens **Settings**: default folder for lab recordings, whether labs should start recording / webcam on, **Discord Rich Presence** (off by default), a **Software window rendering** toggle (CPU draws the window; ffmpeg jobs such as Time Dilation still use the GPU), and a keybind guide. That display toggle needs a restart.
 
@@ -104,6 +104,18 @@ Either way, the result **inherits the original tags**. Replacing a non-MP4 file 
 
 Either way, the result **inherits the original tags**. Everything outside the spans is dropped; the kept spans are stitched in timeline order.
 
+### Goon Loop
+
+**Utilities → Goon Loop**. Pick a video the same way as the Trimmer. The timeline opens on a short span. Drag the handles around the repeating action, then **Find loop** (or **L**). Goon Loop samples frames at both ends of the span and snaps the handles so the wrap looks as similar as it can.
+
+Playback loops that span so you can judge the cut. **Save loop** asks whether to:
+
+- **Save as a new video** — writes `name (goon loop).mp4` next to the original
+- **Replace the original** — overwrites that library item
+- **Save as a looping GIF** — writes a looping GIF into Pictures (under 60 seconds)
+
+Video saves **inherit the original tags** and add **goon loop**. A GIF save adds **gif** instead.
+
 ### Time Dilation
 
 **Utilities → Time Dilation**. Pick a video the same way as the Trimmer. Click the clock-and-plus control next to the timeline to drop a pair of handles. The span between them plays slower (video and audio). Choose **1.5×**, **2×**, or **2.5×** for the selected span; add as many spans as you want.
@@ -142,7 +154,7 @@ Full tables live in Settings. The ones you will hit most:
 | Scroller / Beat Bar / Pixel Perfection / Hypno Station | Space pause, C webcam, R record, Esc exit |
 | Pixel Perfection | F faces, N NSFW, D skip dark, [ ] mosaic |
 | Hypno Station | 1/2/3 cut speed, B rumble, E overlays, → next snippet |
-| Trimmer / Splicer / Time Dilation / GIF | Space play/pause, Esc close |
+| Trimmer / Splicer / Goon Loop / Time Dilation / GIF | Space play/pause, Esc close |
 
 ## Privacy
 

@@ -3139,6 +3139,10 @@ button.queue-row:hover .queue-row-add {
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
 }
+.loop-quality {
+  font-size: 12px;
+  color: var(--text-dim);
+}
 
 .gif-controls {
   display: flex;

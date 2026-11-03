@@ -12,6 +12,7 @@ import {
   Image,
   ListVideo,
   Orbit,
+  Repeat,
   Scissors,
   Spade,
   Sparkles,
@@ -93,6 +94,7 @@ export interface ThemeCopy {
   utilitiesHeading: string
   trimmer: string
   splicer: string
+  goonLoop: string
   timeDilation: string
   goonImageFormat: string
   tagsHeading: string
@@ -113,6 +115,7 @@ export interface ThemeIcons {
   hypnoStation: Icon
   trimmer: Icon
   splicer: Icon
+  goonLoop: Icon
   timeDilation: Icon
   goonImageFormat: Icon
   live?: Icon
@@ -153,6 +156,7 @@ const DEFAULT_COPY: ThemeCopy = {
   utilitiesHeading: 'Utilities',
   trimmer: 'Trimmer',
   splicer: 'Splicer',
+  goonLoop: 'Goon Loop',
   timeDilation: 'Time Dilation',
   goonImageFormat: 'Goon Image Format',
   tagsHeading: 'Tags',
@@ -173,6 +177,7 @@ const DEFAULT_ICONS: ThemeIcons = {
   hypnoStation: HypnoSpiral,
   trimmer: Scissors,
   splicer: Combine,
+  goonLoop: Repeat,
   timeDilation: Clock,
   goonImageFormat: Image
 }

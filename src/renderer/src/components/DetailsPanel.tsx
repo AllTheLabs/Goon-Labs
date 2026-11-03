@@ -1,4 +1,4 @@
-import { Clock, Combine, Download, Expand, FolderSearch, Image, MousePointerClick, Scissors, Trash2 } from 'lucide-react'
+import { Clock, Combine, Download, Expand, FolderSearch, Image, MousePointerClick, Repeat, Scissors, Trash2 } from 'lucide-react'
 import type { MediaItem } from '../../../shared/types'
 import { extensionOf, formatBytes, formatDate, mediaUrl, plural } from '../utils'
 import { MediaPreview } from './MediaPreview'
@@ -16,6 +16,7 @@ interface DetailsPanelProps {
   onOpenViewer: (id: string) => void
   onOpenTrimmer: (item: MediaItem) => void
   onOpenSplicer: (item: MediaItem) => void
+  onOpenGoonLoop: (item: MediaItem) => void
   onOpenTimeDilation: (item: MediaItem) => void
   onOpenGif: (item: MediaItem) => void
   onReveal: (id: string) => void
@@ -55,6 +56,7 @@ function SingleDetails({
   onOpenViewer,
   onOpenTrimmer,
   onOpenSplicer,
+  onOpenGoonLoop,
   onOpenTimeDilation,
   onOpenGif,
   onReveal,
@@ -121,6 +123,9 @@ function SingleDetails({
             </button>
             <button className="btn btn-secondary full" onClick={() => onOpenSplicer(item)}>
               <Combine size={16} /> Splice video
+            </button>
+            <button className="btn btn-secondary full" onClick={() => onOpenGoonLoop(item)}>
+              <Repeat size={16} /> Goon Loop
             </button>
             <button className="btn btn-secondary full" onClick={() => onOpenTimeDilation(item)}>
               <Clock size={16} /> Time dilation

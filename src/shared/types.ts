@@ -183,6 +183,7 @@ export interface MediaApi {
   relaunchApp(): Promise<void>
   chooseSessionDir(): Promise<string | null>
   trimVideo(id: string, start: number, end: number, mode: TrimMode): Promise<TrimResult>
+  loopVideo(id: string, start: number, end: number, mode: TrimMode): Promise<TrimResult>
   dilateVideo(id: string, spans: DilationSpan[], mode: TrimMode, interpolate: boolean): Promise<TrimResult>
   spliceVideo(id: string, spans: SpliceSpan[], mode: TrimMode): Promise<TrimResult>
   makeGif(id: string, start: number, end: number, options: GifOptions, mode: TrimMode): Promise<TrimResult>

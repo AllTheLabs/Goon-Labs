@@ -24,6 +24,7 @@ interface SidebarProps {
   onOpenHypno: () => void
   onOpenTrimmer: () => void
   onOpenSplicer: () => void
+  onOpenGoonLoop: () => void
   onOpenTimeDilation: () => void
   onOpenGif: () => void
   onOpenThemes: () => void
@@ -48,6 +49,7 @@ export function Sidebar(props: SidebarProps) {
     hypnoStation: HypnoIcon,
     trimmer: TrimmerIcon,
     splicer: SplicerIcon,
+    goonLoop: LoopIcon,
     timeDilation: DilationIcon,
     goonImageFormat: GifIcon
   } = icons
@@ -134,6 +136,10 @@ export function Sidebar(props: SidebarProps) {
         <button className="nav-item" onClick={props.onOpenSplicer}>
           <SplicerIcon size={16} />
           <span className="nav-label">{copy.splicer}</span>
+        </button>
+        <button className="nav-item" onClick={props.onOpenGoonLoop}>
+          <LoopIcon size={16} />
+          <span className="nav-label">{copy.goonLoop}</span>
         </button>
         <button className="nav-item" onClick={props.onOpenTimeDilation}>
           <DilationIcon size={16} />

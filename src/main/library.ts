@@ -20,6 +20,7 @@ import { mediaTypeOf } from './mediaTypes'
 import { FFMPEG, h264EncodeArgs, PreviewManager, probeVideo, runFfmpeg } from './previews'
 
 const DILATION_TAG = 'time dilated'
+const LOOP_TAG = 'goon loop'
 const DILATION_FACTOR_SET = new Set<number>(DILATION_FACTORS)
 const GIF_TAG = 'gif'
 const GIF_QUALITY_SET = new Set<string>(GIF_QUALITIES)
@@ -518,6 +519,114 @@ export class Library {
     item.relPath = toRelPath(this.root, finalPath)
     item.size = stat.size
     item.importedAt = new Date().toISOString()
+    await this.save()
+    await this.previews.forget([item.id])
+    this.queuePreviews([item])
+    return { item, replaced: true }
+  }
+
+  /**
+   * Cuts `start`–`end` as a looping clip. `new` writes a sibling file; `replace`
+   * overwrites the original. Both keep the original tags and add `goon loop`.
+   */
+  async loopVideo(
+    id: string,
+    start: number,
+    end: number,
+    mode: TrimMode
+  ): Promise<{ item: MediaItem; replaced: boolean }> {
+    const item = this.items.get(id)
+    if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
+    const source = this.absolutePathOf(id)
+    if (!source) throw new Error('The video file is missing')
+    if (!FFMPEG) throw new Error('ffmpeg is not available')
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < 0.1) {
+      throw new Error('The loop is too short')
+    }
+
+    const encoder = await h264EncodeArgs()
+    const dir = path.dirname(source)
+    const stem = path.parse(item.fileName).name
+    const duration = (end - start).toFixed(3)
+    const tags = [...new Set([...item.tags, normalizeTag(LOOP_TAG)])].sort()
+
+    const encodeTo = async (dest: string) => {
+      await runFfmpeg([
+        '-y',
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-i',
+        source,
+        '-ss',
+        Math.max(0, start).toFixed(3),
+        '-t',
+        duration,
+        '-map',
+        '0:v:0',
+        '-map',
+        '0:a:0?',
+        ...encoder,
+        '-c:a',
+        'aac',
+        '-b:a',
+        '192k',
+        '-ac',
+        '2',
+        '-movflags',
+        '+faststart',
+        dest
+      ])
+    }
+
+    if (mode === 'new') {
+      const dest = await uniqueDest(dir, `${stem} (goon loop).mp4`)
+      try {
+        await encodeTo(dest)
+      } catch (err) {
+        await fs.rm(dest, { force: true })
+        throw err
+      }
+      const stat = await fs.stat(dest)
+      const next: MediaItem = {
+        id: randomUUID(),
+        fileName: path.basename(dest),
+        relPath: toRelPath(this.root, dest),
+        type: 'video',
+        size: stat.size,
+        importedAt: new Date().toISOString(),
+        tags
+      }
+      this.items.set(next.id, next)
+      await this.save()
+      this.queuePreviews([next])
+      return { item: next, replaced: false }
+    }
+
+    const temp = await uniqueDest(dir, `${stem}.loop.tmp.mp4`)
+    try {
+      await encodeTo(temp)
+    } catch (err) {
+      await fs.rm(temp, { force: true })
+      throw err
+    }
+    const finalPath = source.toLowerCase().endsWith('.mp4') ? source : await uniqueDest(dir, `${stem}.mp4`)
+    try {
+      await fs.rm(source)
+      await fs.rename(temp, finalPath)
+    } catch (err) {
+      await fs.rm(temp, { force: true })
+      throw new Error(
+        `Could not replace the original (${(err as Error).message}). Save as a new video instead.`
+      )
+    }
+
+    const stat = await fs.stat(finalPath)
+    item.fileName = path.basename(finalPath)
+    item.relPath = toRelPath(this.root, finalPath)
+    item.size = stat.size
+    item.importedAt = new Date().toISOString()
+    item.tags = tags
     await this.save()
     await this.previews.forget([item.id])
     this.queuePreviews([item])

@@ -55,6 +55,7 @@ const api: MediaApi = {
   relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
   chooseSessionDir: () => ipcRenderer.invoke('settings:choose-session-dir'),
   trimVideo: (id, start, end, mode) => ipcRenderer.invoke('media:trim', id, start, end, mode),
+  loopVideo: (id, start, end, mode) => ipcRenderer.invoke('media:loop', id, start, end, mode),
   dilateVideo: (id, spans, mode, interpolate) =>
     ipcRenderer.invoke('media:dilate', id, spans, mode, interpolate),
   spliceVideo: (id, spans, mode) => ipcRenderer.invoke('media:splice', id, spans, mode),

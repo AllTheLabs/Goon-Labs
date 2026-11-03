@@ -1,0 +1,148 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Repeat, Search, X } from 'lucide-react'
+import type { MediaItem } from '../../../shared/types'
+import { useTheme } from '../themes'
+import { plural } from '../utils'
+import { LabTagPicker } from './LabTagPicker'
+import { matchVideos } from './ScrollerSetup'
+import type { TagMatch } from './ScrollerSetup'
+import { VideoPickThumb } from './VideoPickThumb'
+
+interface GoonLoopSetupProps {
+  videos: MediaItem[]
+  initialId: string | null
+  onPick: (video: MediaItem) => void
+  onClose: () => void
+}
+
+export function GoonLoopSetup({ videos, initialId, onPick, onClose }: GoonLoopSetupProps) {
+  const { copy, icons } = useTheme()
+  const LoopIcon = icons.goonLoop
+  const TagIcon = icons.tag
+
+  const videoTagCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const video of videos) for (const tag of video.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1)
+    return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b))
+  }, [videos])
+
+  const [query, setQuery] = useState('')
+  const [tags, setTags] = useState<string[]>([])
+  const [match, setMatch] = useState<TagMatch>('any')
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialId && videos.some((video) => video.id === initialId) ? initialId : null
+  )
+
+  const matched = useMemo(() => {
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+    return matchVideos(videos, tags, match).filter((video) => {
+      const name = video.fileName.toLowerCase()
+      return terms.every((term) => name.includes(term))
+    })
+  }, [videos, tags, match, query])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      else if (e.key === 'Enter' && selectedId) {
+        const video = matched.find((item) => item.id === selectedId)
+        if (video) onPick(video)
+      } else return
+      e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, onPick, selectedId, matched])
+
+  const selected = matched.find((video) => video.id === selectedId) ?? videos.find((video) => video.id === selectedId)
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal trimmer-setup" onClick={(e) => e.stopPropagation()}>
+        <header className="modal-header">
+          <div className="modal-icon">
+            <LoopIcon size={20} />
+          </div>
+          <div>
+            <h2>{copy.goonLoop}</h2>
+            <p>Pick a video, mark the repeating action, then snap the ends so it loops cleanly.</p>
+          </div>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </header>
+
+        {videos.length === 0 ? (
+          <p className="modal-empty">Import some videos first — Goon Loop only works with videos.</p>
+        ) : (
+          <>
+            <div className="search">
+              <Search size={16} className="search-icon" />
+              <input
+                className="input search-input"
+                placeholder="Search names…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                autoFocus
+              />
+              {query && (
+                <button className="search-clear" onClick={() => setQuery('')} aria-label="Clear search">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <LabTagPicker
+              counts={videoTagCounts}
+              selected={tags}
+              onToggle={(tag) =>
+                setTags((current) =>
+                  current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag]
+                )
+              }
+              match={match}
+              onMatch={setMatch}
+              icon={TagIcon}
+            />
+            {selected && (
+              <div className="trimmer-pick-preview">
+                <VideoPickThumb item={selected} size="preview" />
+                <div className="trimmer-pick-preview-meta">
+                  <strong>{selected.fileName}</strong>
+                  {selected.tags.length > 0 && <span>{selected.tags.join(' · ')}</span>}
+                </div>
+              </div>
+            )}
+            <div className="queue-list">
+              {matched.length === 0 ? (
+                <p className="queue-empty">No videos match.</p>
+              ) : (
+                matched.map((video) => (
+                  <button
+                    key={video.id}
+                    className={`queue-row ${video.id === selectedId ? 'selected' : ''}`}
+                    onClick={() => setSelectedId(video.id)}
+                    onDoubleClick={() => onPick(video)}
+                  >
+                    <VideoPickThumb item={video} size="row" />
+                    <span className="queue-row-text">
+                      <span className="queue-row-name">{video.fileName}</span>
+                      {video.tags.length > 0 && (
+                        <span className="queue-row-tags">{video.tags.join(' · ')}</span>
+                      )}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+            <footer className="modal-footer">
+              <span className="modal-summary">{plural(matched.length, 'video')}</span>
+              <button className="btn btn-primary" disabled={!selected} onClick={() => selected && onPick(selected)}>
+                <Repeat size={16} /> Open Goon Loop
+              </button>
+            </footer>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
