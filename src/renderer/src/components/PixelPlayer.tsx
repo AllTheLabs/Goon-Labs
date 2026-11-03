@@ -13,6 +13,8 @@ import {
   X
 } from 'lucide-react'
 import type { LabPrefs } from '../labPrefs'
+import type { LabRecap } from '../labRecap'
+import { recapCount } from '../labRecap'
 import { createPixelDetector, isDarkSkinRegion, isSkipDarkMaleBox, smoothBoxes } from '../pixelDetect'
 import type { PixelBox, PixelDetector } from '../pixelDetect'
 import { useTheme } from '../themes'
@@ -33,8 +35,7 @@ interface PixelPlayerProps {
   entries: QueueEntry[]
   settings: PixelSettings
   launch?: LabPrefs
-  onExit: () => void
-  onFinished: (played: number, failed: number) => void
+  onExit: (recap: LabRecap) => void
 }
 
 const CONTROLS_HIDE_MS = 2500
@@ -80,9 +81,15 @@ function pixelate(
   ctx.imageSmoothingEnabled = true
 }
 
-export function PixelPlayer({ entries, settings, launch, onExit, onFinished }: PixelPlayerProps) {
+export function PixelPlayer({ entries, settings, launch, onExit }: PixelPlayerProps) {
   const { copy } = useTheme()
-  const lab = useLabSession(copy.pixelPerfection, launch, onExit)
+  const endRef = useRef<() => void>(() => {})
+  const lab = useLabSession(copy.pixelPerfection, launch, () => endRef.current())
+  const ended = useRef(false)
+  const uniqueShown = useRef(new Set<string>())
+  const videosShown = useRef(0)
+  const facesHit = useRef(0)
+  const nsfwHit = useRef(0)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const scratchRef = useRef(document.createElement('canvas'))
@@ -153,9 +160,9 @@ export function PixelPlayer({ entries, settings, launch, onExit, onFinished }: P
       setIndex(0)
       setPass((p) => p + 1)
     } else {
-      onFinished(played.current, failures.current.total)
+      endRef.current()
     }
-  }, [index, entries.length, endless, onFinished])
+  }, [index, entries.length, endless])
 
   const back = useCallback(() => {
     const video = videoRef.current
@@ -175,7 +182,7 @@ export function PixelPlayer({ entries, settings, launch, onExit, onFinished }: P
     failures.current.total++
     failures.current.inARow++
     if (failures.current.inARow >= entries.length) {
-      onFinished(played.current, failures.current.total)
+      endRef.current()
     } else {
       advance()
     }
@@ -267,6 +274,8 @@ export function PixelPlayer({ entries, settings, launch, onExit, onFinished }: P
             .then((found) => {
               boxesRef.current = frozen ? found : smoothBoxes(boxesRef.current, found)
               boxesAt.current = performance.now()
+              if (facesRef.current && found.some((box) => box.kind === 'face')) facesHit.current++
+              if (nsfwRef.current && found.some((box) => box.kind === 'nsfw')) nsfwHit.current++
             })
             .catch((err: Error) => {
               if (detectErrorShown.current) return
@@ -284,6 +293,26 @@ export function PixelPlayer({ entries, settings, launch, onExit, onFinished }: P
     raf.current = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(raf.current)
   }, [index, pass])
+
+  useEffect(() => {
+    videosShown.current++
+    uniqueShown.current.add(entry.item.id)
+  }, [index, pass, entry.item.id])
+
+  const end = useCallback(() => {
+    if (ended.current) return
+    ended.current = true
+    const stats = [
+      recapCount('Videos shown', videosShown.current),
+      recapCount('Unique videos', uniqueShown.current.size),
+      recapCount('Videos finished', played.current),
+      recapCount('Face detections', facesHit.current),
+      recapCount('NSFW detections', nsfwHit.current)
+    ]
+    if (failures.current.total > 0) stats.push(recapCount("Couldn't play", failures.current.total))
+    onExit({ lab: copy.pixelPerfection, durationSeconds: lab.elapsedSeconds(), stats })
+  }, [onExit, copy.pixelPerfection, lab.elapsedSeconds])
+  endRef.current = end
 
   const hideTimer = useRef<number | undefined>(undefined)
   const overControls = useRef(false)
@@ -307,7 +336,7 @@ export function PixelPlayer({ entries, settings, launch, onExit, onFinished }: P
         if (e.target.type !== 'range' && e.target.type !== 'checkbox') return
         if (e.target.type === 'range' && key.startsWith('arrow')) return
       }
-      if (key === 'escape') onExit()
+      if (key === 'escape') end()
       else if (key === ' ') setPaused((p) => !p)
       else if (key === 'arrowright') advance()
       else if (key === 'arrowleft') back()
@@ -327,7 +356,7 @@ export function PixelPlayer({ entries, settings, launch, onExit, onFinished }: P
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [onExit, advance, back, revealControls])
+  }, [end, advance, back, revealControls])
 
   const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2
 
@@ -463,7 +492,7 @@ export function PixelPlayer({ entries, settings, launch, onExit, onFinished }: P
         {lab.controls}
         <div className="scroller-divider" />
 
-        <button className="scroller-btn" onClick={onExit} title="Exit (Esc)">
+        <button className="scroller-btn" onClick={end} title="Exit (Esc)">
           <X size={18} />
         </button>
       </div>

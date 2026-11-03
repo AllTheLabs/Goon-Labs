@@ -54,6 +54,8 @@ Labs are full-screen players. They can show a webcam overlay (move and resize it
 
 Each lab’s setup screen has a **Session time**. Leave it empty and the lab runs until the queue ends or you exit. Set a time and the session winds down: in the last 60 seconds a countdown island appears at the bottom, audio fades, and the lab closes when the clock hits zero. Session time is per visit, not a saved default.
 
+When a lab ends you get a **session recap**: time spent, plus lab-specific counts (tiles and unique videos in the Scroller, beats hit in Beat Bar, clips shown including repeats in Hypno Station, videos and detections in Pixel Perfection, photos shown in Still Station).
+
 ### Scroller
 
 Pick tags (or use every video) and play matching clips in a tiled, endlessly scrolling wall. Hover focus, overlay effects, tile size, and speed live on the top bar. Small preview copies are generated in the background so many videos can play at once.
@@ -79,6 +81,10 @@ Detection is local and imperfect — boxes can miss, sit slightly off the target
 **Labs → Hypno Station**. Queue videos, then watch random snippets cut together on a loop until you exit. Each cut pulses. Audio runs through a wet reverb. A colour wash drifts from pink through magenta and purple over the picture. A dry **melodic rumble** (on by default) plays a dark synth arpeggio in time with the cuts, with the bass kick as the last note of each phrase, and stays out of the reverb — toggle it in setup or with **B** in the lab. Overlay effects from the Scroller are here too (**E**); the pink spiral starts on.
 
 Cut speed is **Linger**, **Flash**, or **Strobe** (1 / 2 / 3 in the lab). The melody follows that speed. **→** jumps to the next snippet.
+
+### Still Station (experimental)
+
+**Labs → Still Station**. Pick tags (or use every photo) and watch them full-screen with a slow Ken Burns zoom and pan. Each still drifts, then crossfades to the next. Drift speed is **Linger**, **Drift**, or **Sweep** (1 / 2 / 3 in the lab). Endless desire loops the photos; turn it off to stop after one pass. **←** / **→** skip. The sidebar marks this lab **Experimental**.
 
 Recordings save to the folder you set in Settings (or Videos if that is unset). After you stop, Goon Labs encodes an H.264 MP4 so the file has a duration and can be seeked.
 
@@ -153,9 +159,10 @@ Full tables live in Settings. The ones you will hit most:
 | Where | Keys |
 | --- | --- |
 | Library | Ctrl+V import URL, Ctrl+A select all, Enter open, Delete, Esc |
-| Scroller / Beat Bar / Pixel Perfection / Hypno Station | Space pause, C webcam, R record, Esc exit |
+| Scroller / Beat Bar / Pixel Perfection / Hypno Station / Still Station | Space pause, C webcam, R record, Esc exit |
 | Pixel Perfection | F faces, N NSFW, D skip dark, [ ] mosaic |
 | Hypno Station | 1/2/3 cut speed, B rumble, E overlays, → next snippet |
+| Still Station | 1/2/3 drift speed, ← → skip, L loop |
 | Trimmer / Splicer / Goon Loop / Time Dilation / GIF | Space play/pause, Esc close |
 
 ## Privacy

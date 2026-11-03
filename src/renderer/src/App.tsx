@@ -28,6 +28,9 @@ import { ScrollerSetup } from './components/ScrollerSetup'
 import { HypnoPlayer } from './components/HypnoPlayer'
 import { HypnoSetup } from './components/HypnoSetup'
 import type { HypnoSettings } from './components/HypnoSetup'
+import { StillPlayer } from './components/StillPlayer'
+import { StillSetup } from './components/StillSetup'
+import type { StillSettings } from './components/StillSetup'
 import { PixelPlayer } from './components/PixelPlayer'
 import { PixelSetup } from './components/PixelSetup'
 import type { PixelSettings } from './components/PixelSetup'
@@ -49,6 +52,8 @@ import { Trimmer } from './components/Trimmer'
 import { TrimmerSetup } from './components/TrimmerSetup'
 import { ThemePicker } from './components/ThemePicker'
 import { Changelog } from './components/Changelog'
+import { LabRecap } from './components/LabRecap'
+import type { LabRecap as LabRecapData } from './labRecap'
 import { UpdateOverlay } from './components/UpdateOverlay'
 import { UrlImport } from './components/UrlImport'
 import type { LabPrefs } from './labPrefs'
@@ -106,6 +111,11 @@ export function App() {
   const [hypno, setHypno] = useState<
     'setup' | { entries: QueueEntry[]; settings: HypnoSettings; launch: LabPrefs } | null
   >(null)
+  const [still, setStill] = useState<
+    | 'setup'
+    | { photos: MediaItem[]; tags: string[]; settings: StillSettings; launch: LabPrefs }
+    | null
+  >(null)
   const [trimmer, setTrimmer] = useState<'pick' | MediaItem | null>(null)
   const [splicer, setSplicer] = useState<'pick' | MediaItem | null>(null)
   const [goonLoop, setGoonLoop] = useState<'pick' | MediaItem | null>(null)
@@ -120,6 +130,7 @@ export function App() {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [dragging, setDragging] = useState(false)
   const [changelog, setChangelog] = useState<AppChangelog | null>(null)
+  const [recap, setRecap] = useState<LabRecapData | null>(null)
   const dragDepth = useRef(0)
   const toastId = useRef(0)
 
@@ -445,6 +456,15 @@ export function App() {
   const closeQueue = useCallback(() => setQueue(null), [])
   const closePixel = useCallback(() => setPixel(null), [])
   const closeHypno = useCallback(() => setHypno(null), [])
+  const closeStill = useCallback(() => setStill(null), [])
+  const endLab = useCallback((next: LabRecapData) => {
+    setScroller(null)
+    setQueue(null)
+    setPixel(null)
+    setHypno(null)
+    setStill(null)
+    setRecap(next)
+  }, [])
   const closeTrimmer = useCallback(() => setTrimmer(null), [])
   const closeSplicer = useCallback(() => setSplicer(null), [])
   const closeGoonLoop = useCallback(() => setGoonLoop(null), [])
@@ -533,44 +553,9 @@ export function App() {
     },
     [mergeItems, notify]
   )
-  const finishQueue = useCallback(
-    (played: number, failed: number) => {
-      setQueue(null)
-      if (played === 0 && failed > 0) {
-        notify('error', 'Beat Bar stopped', 'None of the queued videos could be played.')
-      } else {
-        notify(
-          'success',
-          'Beat Bar finished',
-          `Played ${plural(played, 'video')}${failed > 0 ? `, skipped ${failed} that couldn't play` : ''}.`
-        )
-      }
-    },
-    [notify]
-  )
-  const finishPixel = useCallback(
-    (played: number, failed: number) => {
-      setPixel(null)
-      if (played === 0 && failed > 0) {
-        notify('error', 'Pixel Perfection stopped', 'None of the queued videos could be played.')
-      } else {
-        notify(
-          'success',
-          'Pixel Perfection finished',
-          `Played ${plural(played, 'video')}${failed > 0 ? `, skipped ${failed} that couldn't play` : ''}.`
-        )
-      }
-    },
-    [notify]
-  )
-  const failHypno = useCallback(() => {
-    setHypno(null)
-    notify('error', 'Hypno Station stopped', 'None of the queued videos could be played.')
-  }, [notify])
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (viewerId || scroller || queue || pixel || hypno || trimmer || splicer || goonLoop || dilation || gifMaker || themesOpen || settingsOpen || urlImportOpen || isTypingTarget(e.target)) return
+      if (viewerId || scroller || queue || pixel || hypno || still || trimmer || splicer || goonLoop || dilation || gifMaker || themesOpen || settingsOpen || urlImportOpen || recap || isTypingTarget(e.target)) return
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         e.preventDefault()
         setUrlImportOpen(true)
@@ -594,6 +579,7 @@ export function App() {
     queue,
     pixel,
     hypno,
+    still,
     trimmer,
     splicer,
     goonLoop,
@@ -602,6 +588,7 @@ export function App() {
     themesOpen,
     settingsOpen,
     urlImportOpen,
+    recap,
     activeId,
     selected,
     selectAll,
@@ -647,15 +634,17 @@ export function App() {
   }, [library, runImport])
 
   const activeLab =
-    hypno && hypno !== 'setup'
-      ? 'Hypno Station'
-      : pixel && pixel !== 'setup'
-        ? 'Pixel Perfection'
-        : queue && queue !== 'setup'
-          ? 'Beat Bar'
-          : scroller && scroller !== 'setup'
-            ? 'Scroller'
-            : null
+    still && still !== 'setup'
+      ? 'Still Station'
+      : hypno && hypno !== 'setup'
+        ? 'Hypno Station'
+        : pixel && pixel !== 'setup'
+          ? 'Pixel Perfection'
+          : queue && queue !== 'setup'
+            ? 'Beat Bar'
+            : scroller && scroller !== 'setup'
+              ? 'Scroller'
+              : null
   useDiscordPresence(activeLab)
   const update = useAppUpdate()
   const [checkingUpdate, setCheckingUpdate] = useState(false)
@@ -739,6 +728,7 @@ export function App() {
         onOpenQueue={() => setQueue('setup')}
         onOpenPixel={() => setPixel('setup')}
         onOpenHypno={() => setHypno('setup')}
+        onOpenStill={() => setStill('setup')}
         onOpenTrimmer={() => setTrimmer('pick')}
         onOpenSplicer={() => setSplicer('pick')}
         onOpenGoonLoop={() => setGoonLoop('pick')}
@@ -986,7 +976,7 @@ export function App() {
           tags={scroller.tags}
           previewIds={previewIds}
           launch={scroller.launch}
-          onClose={closeScroller}
+          onClose={endLab}
         />
       )}
 
@@ -1003,8 +993,7 @@ export function App() {
           entries={queue.entries}
           settings={queue.settings}
           launch={queue.launch}
-          onExit={closeQueue}
-          onFinished={finishQueue}
+          onExit={endLab}
         />
       )}
 
@@ -1021,8 +1010,7 @@ export function App() {
           entries={pixel.entries}
           settings={pixel.settings}
           launch={pixel.launch}
-          onExit={closePixel}
-          onFinished={finishPixel}
+          onExit={endLab}
         />
       )}
 
@@ -1039,8 +1027,25 @@ export function App() {
           entries={hypno.entries}
           settings={hypno.settings}
           launch={hypno.launch}
-          onExit={closeHypno}
-          onFailed={failHypno}
+          onExit={endLab}
+        />
+      )}
+
+      {still === 'setup' && (
+        <StillSetup
+          photos={items.filter((item) => item.type === 'image')}
+          initialTags={activeTags}
+          onStart={(photos, tags, settings, launch) => setStill({ photos, tags, settings, launch })}
+          onClose={closeStill}
+        />
+      )}
+      {still && still !== 'setup' && (
+        <StillPlayer
+          photos={still.photos}
+          tags={still.tags}
+          settings={still.settings}
+          launch={still.launch}
+          onExit={endLab}
         />
       )}
 
@@ -1139,6 +1144,7 @@ export function App() {
 
       {themesOpen && <ThemePicker onClose={() => setThemesOpen(false)} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      {recap && <LabRecap recap={recap} onClose={() => setRecap(null)} />}
 
       {dragging && (
         <div className="drop-overlay">

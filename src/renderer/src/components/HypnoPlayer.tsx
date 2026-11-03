@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Pause, Play, Volume1, Volume2, VolumeX, WandSparkles, Waves, X } from 'lucide-react'
 import { HypnoReverb } from '../hypnoReverb'
 import type { LabPrefs } from '../labPrefs'
+import type { LabRecap } from '../labRecap'
+import { recapCount } from '../labRecap'
 import { useTheme } from '../themes'
 import { mediaUrl } from '../utils'
 import { useLabSession } from './LabSession'
@@ -20,8 +22,7 @@ interface HypnoPlayerProps {
   entries: QueueEntry[]
   settings: HypnoSettings
   launch?: LabPrefs
-  onExit: () => void
-  onFailed: () => void
+  onExit: (recap: LabRecap) => void
 }
 
 const CONTROLS_HIDE_MS = 2500
@@ -53,9 +54,12 @@ function waitFor(video: HTMLVideoElement, event: 'loadedmetadata' | 'seeked', ti
   })
 }
 
-export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: HypnoPlayerProps) {
+export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerProps) {
   const { copy } = useTheme()
-  const lab = useLabSession(copy.hypnoStation, launch, onExit)
+  const endRef = useRef<() => void>(() => {})
+  const lab = useLabSession(copy.hypnoStation, launch, () => endRef.current())
+  const ended = useRef(false)
+  const clipStats = useRef({ shown: 0, unique: new Set<string>() })
   const stageRef = useRef<HTMLDivElement>(null)
   const flashRef = useRef<HTMLDivElement>(null)
   const aRef = useRef<HTMLVideoElement>(null)
@@ -165,7 +169,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
           if (closed || token !== armGen) return
           failures++
           if (failures >= Math.max(3, entries.length * 2)) {
-            onFailed()
+            endRef.current()
             return
           }
           window.setTimeout(() => {
@@ -180,8 +184,11 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
       video.volume = 1
       video.classList.add('active')
       void video.play().catch(() => {})
-      setNowPlaying(entries[snippet.index].item.fileName)
-      setCuts((n) => n + 1)
+      const item = entries[snippet.index].item
+      clipStats.current.shown++
+      clipStats.current.unique.add(item.id)
+      setNowPlaying(item.fileName)
+      setCuts(clipStats.current.shown)
     }
 
     const swapLayers = () => {
@@ -273,7 +280,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
       engineRef.current = null
       reverb.close()
     }
-  }, [entries, onFailed])
+  }, [entries])
 
   useEffect(() => {
     engineRef.current?.setVolume((muted ? 0 : volume) * lab.fade)
@@ -292,6 +299,21 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
     if (paused) engineRef.current?.pause()
     else engineRef.current?.resume()
   }, [paused])
+
+  const end = useCallback(() => {
+    if (ended.current) return
+    ended.current = true
+    onExit({
+      lab: copy.hypnoStation,
+      durationSeconds: lab.elapsedSeconds(),
+      stats: [
+        recapCount('Clips shown', clipStats.current.shown),
+        recapCount('Unique videos', clipStats.current.unique.size),
+        recapCount('Videos in queue', entries.length)
+      ]
+    })
+  }, [onExit, copy.hypnoStation, lab.elapsedSeconds, entries.length])
+  endRef.current = end
 
   const hideTimer = useRef<number | undefined>(undefined)
   const overControls = useRef(false)
@@ -312,7 +334,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement && e.target.type !== 'range' && e.target.type !== 'checkbox') return
       const key = e.key.toLowerCase()
-      if (key === 'escape') onExit()
+      if (key === 'escape') end()
       else if (key === ' ') setPaused((p) => !p)
       else if (key === 'arrowright') skipRef.current()
       else if (key === 'm') setMuted((m) => !m)
@@ -330,7 +352,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [onExit, revealControls])
+  }, [end, revealControls])
 
   const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2
 
@@ -423,7 +445,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
         {lab.controls}
         <div className="scroller-divider" />
 
-        <button className="scroller-btn" onClick={onExit} title="Exit (Esc)">
+        <button className="scroller-btn" onClick={end} title="Exit (Esc)">
           <X size={18} />
         </button>
       </div>

@@ -12,6 +12,8 @@ import {
   X
 } from 'lucide-react'
 import type { LabPrefs } from '../labPrefs'
+import type { LabRecap } from '../labRecap'
+import { recapCount } from '../labRecap'
 import { useTheme } from '../themes'
 import { mediaUrl } from '../utils'
 import { BeatBar, INTENSITIES } from './BeatBar'
@@ -24,10 +26,7 @@ interface QueuePlayerProps {
   entries: QueueEntry[]
   settings: QueueSettings
   launch?: LabPrefs
-  /** The user left before the queue ran out. */
-  onExit: () => void
-  /** A play-once queue reached its end, or nothing in it could be played. */
-  onFinished: (played: number, failed: number) => void
+  onExit: (recap: LabRecap) => void
 }
 
 const CONTROLS_HIDE_MS = 2500
@@ -38,9 +37,14 @@ const PULSE_SCALE: Record<BeatIntensity, number> = {
   ludicrous: 1.08
 }
 
-export function QueuePlayer({ entries, settings, launch, onExit, onFinished }: QueuePlayerProps) {
+export function QueuePlayer({ entries, settings, launch, onExit }: QueuePlayerProps) {
   const { copy, theme } = useTheme()
-  const lab = useLabSession(copy.queue, launch, onExit)
+  const endRef = useRef<() => void>(() => {})
+  const lab = useLabSession(copy.queue, launch, () => endRef.current())
+  const ended = useRef(false)
+  const beats = useRef(0)
+  const uniqueShown = useRef(new Set<string>())
+  const videosShown = useRef(0)
   const videoRef = useRef<HTMLVideoElement>(null)
   const pulseRef = useRef<HTMLDivElement>(null)
   const flashRef = useRef<HTMLDivElement>(null)
@@ -67,9 +71,9 @@ export function QueuePlayer({ entries, settings, launch, onExit, onFinished }: Q
       setIndex(0)
       setPass((p) => p + 1)
     } else {
-      onFinished(played.current, failures.current.total)
+      endRef.current()
     }
-  }, [index, entries.length, endless, onFinished])
+  }, [index, entries.length, endless])
 
   const back = useCallback(() => {
     const video = videoRef.current
@@ -89,7 +93,7 @@ export function QueuePlayer({ entries, settings, launch, onExit, onFinished }: Q
     failures.current.total++
     failures.current.inARow++
     if (failures.current.inARow >= entries.length) {
-      onFinished(played.current, failures.current.total)
+      endRef.current()
     } else {
       advance()
     }
@@ -108,7 +112,27 @@ export function QueuePlayer({ entries, settings, launch, onExit, onFinished }: Q
     else video.play().catch(() => {})
   }, [paused, index, pass])
 
+  useEffect(() => {
+    videosShown.current++
+    uniqueShown.current.add(entry.item.id)
+  }, [index, pass, entry.item.id])
+
+  const end = useCallback(() => {
+    if (ended.current) return
+    ended.current = true
+    const stats = [
+      recapCount('Beats hit', beats.current),
+      recapCount('Videos shown', videosShown.current),
+      recapCount('Unique videos', uniqueShown.current.size),
+      recapCount('Videos finished', played.current)
+    ]
+    if (failures.current.total > 0) stats.push(recapCount("Couldn't play", failures.current.total))
+    onExit({ lab: copy.queue, durationSeconds: lab.elapsedSeconds(), stats })
+  }, [onExit, copy.queue, lab.elapsedSeconds])
+  endRef.current = end
+
   const pulse = useCallback((behaviour: BeatIntensity) => {
+    beats.current++
     const scale = PULSE_SCALE[behaviour]
     pulseRef.current?.animate(
       [
@@ -144,7 +168,7 @@ export function QueuePlayer({ entries, settings, launch, onExit, onFinished }: Q
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement && e.target.type !== 'range' && e.target.type !== 'checkbox') return
       const key = e.key.toLowerCase()
-      if (key === 'escape') onExit()
+      if (key === 'escape') end()
       else if (key === ' ') setPaused((p) => !p)
       else if (key === 'arrowright') advance()
       else if (key === 'arrowleft') back()
@@ -164,7 +188,7 @@ export function QueuePlayer({ entries, settings, launch, onExit, onFinished }: Q
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [onExit, advance, back, toggleIntensity, revealControls])
+  }, [end, advance, back, toggleIntensity, revealControls])
 
   const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2
 
@@ -275,7 +299,7 @@ export function QueuePlayer({ entries, settings, launch, onExit, onFinished }: Q
         {lab.controls}
         <div className="scroller-divider" />
 
-        <button className="scroller-btn" onClick={onExit} title="Exit (Esc)">
+        <button className="scroller-btn" onClick={end} title="Exit (Esc)">
           <X size={18} />
         </button>
       </div>

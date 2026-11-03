@@ -22,6 +22,7 @@ interface SidebarProps {
   onOpenQueue: () => void
   onOpenPixel: () => void
   onOpenHypno: () => void
+  onOpenStill: () => void
   onOpenTrimmer: () => void
   onOpenSplicer: () => void
   onOpenGoonLoop: () => void
@@ -47,6 +48,7 @@ export function Sidebar(props: SidebarProps) {
     queue: QueueIcon,
     pixelPerfection: PixelIcon,
     hypnoStation: HypnoIcon,
+    stillStation: StillIcon,
     trimmer: TrimmerIcon,
     splicer: SplicerIcon,
     goonLoop: LoopIcon,
@@ -115,6 +117,11 @@ export function Sidebar(props: SidebarProps) {
         <button className="nav-item" onClick={props.onOpenHypno}>
           <HypnoIcon size={16} />
           <span className="nav-label">{copy.hypnoStation}</span>
+        </button>
+        <button className="nav-item" onClick={props.onOpenStill}>
+          <StillIcon size={16} />
+          <span className="nav-label">{copy.stillStation}</span>
+          <span className="lab-experimental">Experimental</span>
         </button>
         {props.previewsPending > 0 && (
           <div

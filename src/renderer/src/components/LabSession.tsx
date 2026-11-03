@@ -83,6 +83,7 @@ export function useLabSession(
   const onTimeUpRef = useRef(onTimeUp)
   onTimeUpRef.current = onTimeUp
   const timeUpFired = useRef(false)
+  const startedAt = useRef(Date.now())
   const [remaining, setRemaining] = useState<number | null>(null)
   const captureStream = useRef<MediaStream | null>(null)
   const recorder = useRef<MediaRecorder | null>(null)
@@ -333,6 +334,7 @@ export function useLabSession(
   )
 
   const fade = remaining !== null && remaining <= 60 ? Math.max(0, remaining / 60) : 1
+  const elapsedSeconds = useCallback(() => (Date.now() - startedAt.current) / 1000, [])
 
-  return { overlay, controls, recording, fade }
+  return { overlay, controls, recording, fade, elapsedSeconds }
 }

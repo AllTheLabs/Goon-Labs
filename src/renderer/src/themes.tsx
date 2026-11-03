@@ -8,6 +8,7 @@ import {
   Hash,
   Heart,
   HeartPulse,
+  Aperture,
   Grid3x3,
   Image,
   ListVideo,
@@ -91,6 +92,7 @@ export interface ThemeCopy {
   queue: string
   pixelPerfection: string
   hypnoStation: string
+  stillStation: string
   utilitiesHeading: string
   trimmer: string
   splicer: string
@@ -113,6 +115,7 @@ export interface ThemeIcons {
   queue: Icon
   pixelPerfection: Icon
   hypnoStation: Icon
+  stillStation: Icon
   trimmer: Icon
   splicer: Icon
   goonLoop: Icon
@@ -153,6 +156,7 @@ const DEFAULT_COPY: ThemeCopy = {
   queue: 'Beat Bar',
   pixelPerfection: 'Pixel Perfection',
   hypnoStation: 'Hypno Station',
+  stillStation: 'Still Station',
   utilitiesHeading: 'Utilities',
   trimmer: 'Trimmer',
   splicer: 'Splicer',
@@ -175,6 +179,7 @@ const DEFAULT_ICONS: ThemeIcons = {
   queue: ListVideo,
   pixelPerfection: Grid3x3,
   hypnoStation: HypnoSpiral,
+  stillStation: Aperture,
   trimmer: Scissors,
   splicer: Combine,
   goonLoop: Repeat,

@@ -17,6 +17,8 @@ import {
 } from 'lucide-react'
 import type { MediaItem } from '../../../shared/types'
 import type { LabPrefs } from '../labPrefs'
+import type { LabRecap } from '../labRecap'
+import { recapCount } from '../labRecap'
 import { AudioMixer } from '../audioMixer'
 import { fitTiles, justify, probeAspects } from '../scrollerLayout'
 import type { Tile } from '../scrollerLayout'
@@ -30,7 +32,7 @@ interface ScrollerProps {
   tags: string[]
   previewIds: Set<string>
   launch?: LabPrefs
-  onClose: () => void
+  onClose: (recap: LabRecap) => void
 }
 
 const CONTROLS_HIDE_MS = 2500
@@ -92,7 +94,12 @@ function createPicker(videos: MediaItem[]) {
 
 export function Scroller({ videos, tags, previewIds, launch, onClose }: ScrollerProps) {
   const { copy } = useTheme()
-  const lab = useLabSession(copy.scroller, launch, onClose)
+  const endRef = useRef<() => void>(() => {})
+  const lab = useLabSession(copy.scroller, launch, () => endRef.current())
+  const ended = useRef(false)
+  const tilesShown = useRef(0)
+  const uniqueShown = useRef(new Set<string>())
+  const rowsScrolled = useRef(0)
   const stageRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
 
@@ -133,6 +140,8 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
   sourcing.current = { previewIds, rowHeight }
   const makeTile = useCallback((): Tile => {
     const item = picker!.next()
+    tilesShown.current++
+    uniqueShown.current.add(item.id)
     const { previewIds, rowHeight } = sourcing.current
     const usePreview =
       previewIds.has(item.id) && rowHeight * window.devicePixelRatio <= PREVIEW_MAX_TILE_HEIGHT
@@ -186,6 +195,22 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
     mixer?.setVolume((muted ? 0 : volume) * lab.fade)
   }, [mixer, volume, muted, lab.fade])
 
+  const end = useCallback(() => {
+    if (ended.current) return
+    ended.current = true
+    onClose({
+      lab: copy.scroller,
+      durationSeconds: lab.elapsedSeconds(),
+      stats: [
+        recapCount('Tiles shown', tilesShown.current),
+        recapCount('Unique videos', uniqueShown.current.size),
+        recapCount('Rows scrolled', rowsScrolled.current),
+        recapCount('Videos in pool', videos.length)
+      ]
+    })
+  }, [onClose, copy.scroller, lab.elapsedSeconds, videos.length])
+  endRef.current = end
+
   useEffect(() => {
     if (!hoverFocus) mixer?.setFocus(null)
   }, [mixer, hoverFocus])
@@ -231,6 +256,7 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
         if (!state.paused) state.offset += state.speed * dt
         if (state.offset >= first.height) {
           state.offset -= first.height
+          rowsScrolled.current++
           const { width, height } = state.viewport
           // Commit synchronously so the DOM and the reset offset change in the same frame.
           flushSync(() =>
@@ -268,7 +294,7 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement && e.target.type !== 'range') return
       const key = e.key.toLowerCase()
-      if (key === 'escape') onClose()
+      if (key === 'escape') end()
       else if (key === 'e') setEffectsPanelOpen((open) => !open)
       else if (key === ' ') setPaused((p) => !p)
       else if (key === 'm') setMuted((m) => !m)
@@ -283,7 +309,7 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose, revealControls])
+  }, [end, revealControls])
 
   const onTileFailed = useCallback((id: string) => picker?.markUnplayable(id), [picker])
   const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2
@@ -334,7 +360,7 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
           <div className="scroller-status">
             <VideoOff size={32} />
             <span>None of these videos can be played.</span>
-            <button className="btn btn-secondary" onClick={onClose}>
+            <button className="btn btn-secondary" onClick={end}>
               Close
             </button>
           </div>
@@ -448,7 +474,7 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
         {lab.controls}
         <div className="scroller-divider" />
 
-        <button className="scroller-btn" onClick={onClose} title="Exit scroller (Esc)">
+        <button className="scroller-btn" onClick={end} title="Exit scroller (Esc)">
           <X size={18} />
         </button>
       </div>

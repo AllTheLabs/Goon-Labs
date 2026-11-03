@@ -87,6 +87,16 @@ const HYPNO_KEYS: [string, string][] = [
   ['Esc', 'Exit']
 ]
 
+const STILL_KEYS: [string, string][] = [
+  ['Space', 'Pause / resume'],
+  ['← / →', 'Previous / next photo'],
+  ['L', 'Endless desire'],
+  ['1 / 2 / 3', 'Linger / Drift / Sweep'],
+  ['C', 'Webcam on / off'],
+  ['R', 'Start / stop recording'],
+  ['Esc', 'Exit']
+]
+
 const PIXEL_KEYS: [string, string][] = [
   ['Space', 'Pause / resume'],
   ['← / →', 'Previous / next video'],
@@ -288,6 +298,7 @@ export function Settings({ onClose }: SettingsProps) {
           <KeyTable title="Beat Bar" rows={BEAT_KEYS} />
           <KeyTable title="Pixel Perfection" rows={PIXEL_KEYS} />
           <KeyTable title="Hypno Station" rows={HYPNO_KEYS} />
+          <KeyTable title="Still Station" rows={STILL_KEYS} />
           <KeyTable title="Trimmer" rows={TRIMMER_KEYS} />
           <KeyTable title="Splicer" rows={SPLICER_KEYS} />
           <KeyTable title="Goon Loop" rows={LOOP_KEYS} />

@@ -1399,6 +1399,63 @@ p {
 .changelog-link:hover {
   color: var(--accent);
 }
+.recap-modal {
+  width: min(440px, 92vw);
+}
+.recap-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 12px 16px;
+  border-radius: 16px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+}
+.recap-hero strong {
+  font-size: 42px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+.recap-hero span {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.recap-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.recap-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+}
+.recap-stat span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.recap-stat strong {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.recap-stat:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -1406,6 +1463,7 @@ p {
 
 .scroller-setup {
   width: min(720px, 94vw);
+  max-height: 92vh;
   gap: 20px;
 }
 .scroller-setup-row {
@@ -2432,6 +2490,23 @@ button.queue-row:hover .queue-row-add {
 .hypno-flash {
   z-index: 5;
   background: radial-gradient(circle at 50% 50%, rgba(255, 120, 200, 0.55) 0%, transparent 62%);
+}
+.still-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition: opacity 1.15s ease;
+}
+.still-layer.active {
+  opacity: 1;
+  z-index: 1;
 }
 @keyframes hypno-hue {
   0% {
