@@ -601,6 +601,7 @@ export function App() {
             : null
   useDiscordPresence(activeLab)
   const update = useAppUpdate()
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
 
   if (loading) {
     return (
@@ -663,26 +664,52 @@ export function App() {
 
       <main className="main">
         <header className="toolbar">
-          {(update.state === 'available' ||
-            update.state === 'downloading' ||
-            update.state === 'ready') && (
+          <div className="toolbar-update-group">
             <button
-              className="btn btn-primary toolbar-update"
-              disabled={update.state !== 'available'}
-              onClick={() => void window.api.installUpdate()}
-              title={`Download Goon Labs ${update.version} and install it`}
+              className={`btn toolbar-update ${
+                update.state === 'available' ? 'btn-primary toolbar-update-ready' : 'btn-secondary'
+              }`}
+              disabled={
+                checkingUpdate || update.state === 'downloading' || update.state === 'ready'
+              }
+              onClick={async () => {
+                if (update.state === 'available') {
+                  await window.api.installUpdate()
+                  return
+                }
+                setCheckingUpdate(true)
+                await window.api.checkForUpdate()
+                setCheckingUpdate(false)
+              }}
+              title={
+                update.state === 'available'
+                  ? `Download Goon Labs ${update.version} and install it`
+                  : update.state === 'error'
+                    ? update.message
+                    : 'Check GitHub for a newer installer'
+              }
             >
-              {update.state === 'available' ? (
-                <Download size={16} />
-              ) : (
+              {checkingUpdate ||
+              update.state === 'downloading' ||
+              update.state === 'ready' ? (
                 <Loader2 className="spin" size={16} />
+              ) : (
+                <Download size={16} />
               )}
-              {update.state === 'available' && `Update to ${update.version}`}
+              {checkingUpdate && 'Checking…'}
+              {!checkingUpdate && update.state === 'idle' && 'Update'}
+              {!checkingUpdate && update.state === 'error' && 'Update'}
+              {!checkingUpdate && update.state === 'available' && `Update to ${update.version}`}
               {update.state === 'downloading' &&
                 `Downloading ${Math.round(update.progress * 100)}%`}
               {update.state === 'ready' && 'Installing…'}
             </button>
-          )}
+            {update.currentVersion && (
+              <span className="toolbar-version" title="Installed version">
+                {update.currentVersion}
+              </span>
+            )}
+          </div>
           <div className="search">
             <Search size={16} className="search-icon" />
             <input

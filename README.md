@@ -8,7 +8,7 @@ Everything stays on this computer. There is no account, no cloud, and nothing is
 
 Run `Goon-Labs-Setup-<version>.exe`. The installer is per-user by default and can put shortcuts on the desktop and Start menu.
 
-When a newer installer is on [GitHub Releases](https://github.com/AllTheLabs/Goon-Labs/releases), an **Update** button appears at the top of the library. It downloads that installer and runs it. You can also check from Settings.
+The library toolbar has an **Update** button (with the installed version beside it). Click it to check GitHub Releases. If a newer installer is up, the button lights up in the current theme; click again to download and install. You can also check from Settings.
 
 Each GitHub release needs these files from `dist/` after `npm run dist`:
 
