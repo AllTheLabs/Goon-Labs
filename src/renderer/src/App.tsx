@@ -49,6 +49,7 @@ import { Toasts } from './components/Toasts'
 import type { Toast, ToastKind } from './components/Toasts'
 import { Viewer } from './components/Viewer'
 import { Welcome } from './components/Welcome'
+import { useDiscordPresence } from './discordPresence'
 import { plural } from './utils'
 
 type SortKey = 'newest' | 'oldest' | 'name' | 'size'
@@ -586,6 +587,18 @@ export function App() {
       window.removeEventListener('drop', onDrop)
     }
   }, [library, runImport])
+
+  const activeLab =
+    hypno && hypno !== 'setup'
+      ? 'Hypno Station'
+      : pixel && pixel !== 'setup'
+        ? 'Pixel Perfection'
+        : queue && queue !== 'setup'
+          ? 'Beat Bar'
+          : scroller && scroller !== 'setup'
+            ? 'Scroller'
+            : null
+  useDiscordPresence(activeLab)
 
   if (loading) {
     return (

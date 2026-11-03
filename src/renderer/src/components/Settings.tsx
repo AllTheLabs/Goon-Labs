@@ -109,6 +109,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [sessionDir, setSessionDir] = useState<string | null>(null)
   const [softwareWindow, setSoftwareWindow] = useState(false)
   const [softwareWindowActive, setSoftwareWindowActive] = useState(false)
+  const [discordRichPresence, setDiscordRichPresence] = useState(false)
   const [prefs, setPrefs] = useState(loadLabPrefs)
 
   useEffect(() => {
@@ -116,6 +117,7 @@ export function Settings({ onClose }: SettingsProps) {
       setSessionDir(settings.sessionDir)
       setSoftwareWindow(settings.softwareWindow)
       setSoftwareWindowActive(settings.softwareWindowActive)
+      setDiscordRichPresence(settings.discordRichPresence)
     })
   }, [])
 
@@ -175,6 +177,30 @@ export function Settings({ onClose }: SettingsProps) {
         <section className="settings-block">
           <h3>When a lab opens</h3>
           <LabPrefToggles value={prefs} onChange={updatePrefs} />
+        </section>
+
+        <section className="settings-block">
+          <h3>Discord</h3>
+          <label className={`endless-toggle ${discordRichPresence ? 'on' : ''}`}>
+            <input
+              type="checkbox"
+              checked={discordRichPresence}
+              onChange={async (e) => {
+                const on = e.target.checked
+                setDiscordRichPresence(on)
+                await window.api.setDiscordRichPresence(on)
+              }}
+            />
+            <span>
+              <strong>Rich Presence</strong>
+              <small>
+                Show as AllTheLabs on your Discord profile. Friends see browsing, idle, or the lab
+                you are in, and a link to GitHub releases — not what you are watching. Needs the
+                Discord desktop app, and Activity Status turned on in Discord (Settings → Activity
+                Privacy). Off by default.
+              </small>
+            </span>
+          </label>
         </section>
 
         <section className="settings-block">

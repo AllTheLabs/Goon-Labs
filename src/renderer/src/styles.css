@@ -256,6 +256,10 @@ p {
   padding-left: 26px;
   color: var(--text);
 }
+.welcome-discord {
+  width: 100%;
+  text-align: left;
+}
 
 /* ---------- App layout ---------- */
 
@@ -1898,6 +1902,11 @@ p {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
+}
+.lab-tag-picker .search {
+  flex: none;
+  width: 100%;
+  min-width: 0;
 }
 .lab-tags {
   min-height: 148px;

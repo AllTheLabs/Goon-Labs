@@ -254,7 +254,13 @@ function spawnParticle(width: number, height: number, anywhere: boolean): Partic
 }
 
 /** Renders the enabled effects over the whole scroller. Never intercepts the mouse. */
-export function EffectsOverlay({ settings }: { settings: EffectSettings }) {
+export function EffectsOverlay({
+  settings,
+  hideTint
+}: {
+  settings: EffectSettings
+  hideTint?: boolean
+}) {
   const rootRef = useRef<HTMLDivElement>(null)
   const glRef = useRef<HTMLCanvasElement>(null)
   const particlesRef = useRef<HTMLCanvasElement>(null)
@@ -368,7 +374,7 @@ export function EffectsOverlay({ settings }: { settings: EffectSettings }) {
       {/* Blend modes must sit outside the opacity group, or they'd blend against nothing. */}
       <div
         className="effects-tint"
-        style={{ opacity: settings.tint ? settings.opacity * 0.85 : 0 }}
+        style={{ opacity: !hideTint && settings.tint ? settings.opacity * 0.85 : 0 }}
       />
       <div className="effects-layers" style={{ opacity: settings.opacity }}>
         <canvas ref={glRef} className="effects-canvas" style={{ visibility: shaderOn ? 'visible' : 'hidden' }} />
@@ -396,15 +402,17 @@ const EFFECTS: { key: 'spiral' | 'heart' | 'particles' | 'tint'; label: string; 
 interface EffectsPanelProps {
   settings: EffectSettings
   onChange: (update: (current: EffectSettings) => EffectSettings) => void
+  hideTint?: boolean
 }
 
-export function EffectsPanel({ settings, onChange }: EffectsPanelProps) {
+export function EffectsPanel({ settings, onChange, hideTint }: EffectsPanelProps) {
+  const options = hideTint ? EFFECTS.filter((effect) => effect.key !== 'tint') : EFFECTS
   const toggle = (key: (typeof EFFECTS)[number]['key']) =>
     onChange((current) => {
       const enabling = !current[key]
       const next = { ...current, [key]: enabling }
       // The spiral and heart are designed to sit on a pink-filtered scroller.
-      if (enabling && (key === 'spiral' || key === 'heart')) next.tint = true
+      if (!hideTint && enabling && (key === 'spiral' || key === 'heart')) next.tint = true
       return next
     })
 
@@ -412,7 +420,7 @@ export function EffectsPanel({ settings, onChange }: EffectsPanelProps) {
     <div className="effects-panel" onClick={(e) => e.stopPropagation()}>
       <div className="effects-panel-title">Overlay effects</div>
       <div className="effects-grid">
-        {EFFECTS.map(({ key, label, icon: Icon }) => (
+        {options.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             className={`effect-toggle ${settings[key] ? 'active' : ''}`}

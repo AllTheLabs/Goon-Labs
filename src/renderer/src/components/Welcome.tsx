@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Film, Folder, FolderOpen, Image } from 'lucide-react'
 import { useTheme } from '../themes'
 
@@ -8,6 +9,12 @@ interface WelcomeProps {
 export function Welcome({ onChoose }: WelcomeProps) {
   const { copy, icons } = useTheme()
   const BrandIcon = icons.brand
+  const [discordOn, setDiscordOn] = useState(false)
+
+  useEffect(() => {
+    window.api.getAppSettings().then((settings) => setDiscordOn(settings.discordRichPresence))
+  }, [])
+
   return (
     <div className="welcome">
       <div className="welcome-card">
@@ -32,6 +39,25 @@ export function Welcome({ onChoose }: WelcomeProps) {
             <Film size={16} /> Videos
           </div>
         </div>
+
+        <label className={`endless-toggle welcome-discord ${discordOn ? 'on' : ''}`}>
+          <input
+            type="checkbox"
+            checked={discordOn}
+            onChange={async (e) => {
+              const on = e.target.checked
+              setDiscordOn(on)
+              await window.api.setDiscordRichPresence(on)
+            }}
+          />
+          <span>
+            <strong>Show Goon Labs on Discord</strong>
+            <small>
+              Optional. Friends see AllTheLabs, plus that the app is open and which lab you are in —
+              not your library. You can change this later in Settings.
+            </small>
+          </span>
+        </label>
 
         <button className="btn btn-primary btn-lg" onClick={onChoose}>
           <FolderOpen size={18} /> Choose repository folder

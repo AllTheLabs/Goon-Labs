@@ -1,13 +1,14 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { existsSync, promises as fs, readFileSync } from 'node:fs'
 import path from 'node:path'
-import type { DilationSpan, GifOptions, ImportSource, TrimMode } from '../shared/types'
+import type { DilationSpan, DiscordActivity, GifOptions, ImportSource, TrimMode } from '../shared/types'
 import { DownloadManager } from './downloads'
 import { Library } from './library'
 import { IMAGE_EXTENSIONS, VIDEO_EXTENSIONS } from './mediaTypes'
 import { loadPixelModel } from './pixelModel'
 import { handleMediaProtocol, registerMediaScheme } from './protocol'
 import { installCapturePermissions, SessionRecording, windowSourceId } from './sessionCapture'
+import { setDiscordActivity, setDiscordEnabled, stopDiscordPresence } from './discordPresence'
 
 interface AppConfig {
   repositoryPath?: string
@@ -15,6 +16,8 @@ interface AppConfig {
   lastSessionDir?: string
   /** Draw the window with the CPU. ffmpeg jobs (Time Dilation, etc.) still use the GPU. */
   softwareWindow?: boolean
+  /** Show AllTheLabs on Discord. Off by default. */
+  discordRichPresence?: boolean
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -102,7 +105,8 @@ function registerIpc(): void {
     })
     if (canceled || filePaths.length === 0) return null
     library = await openLibrary(filePaths[0])
-    await writeConfig({ repositoryPath: library.root })
+    const config = await readConfig()
+    await writeConfig({ ...config, repositoryPath: library.root })
     return library.state
   })
 
@@ -215,13 +219,24 @@ function registerIpc(): void {
     return {
       sessionDir: config.sessionDir ?? null,
       softwareWindow: Boolean(config.softwareWindow),
-      softwareWindowActive
+      softwareWindowActive,
+      discordRichPresence: Boolean(config.discordRichPresence)
     }
   })
   ipcMain.handle('settings:set-software-window', async (_event, enabled: boolean) => {
     const config = await readConfig()
     await writeConfig({ ...config, softwareWindow: Boolean(enabled) })
     return Boolean(enabled)
+  })
+  ipcMain.handle('settings:set-discord-presence', async (_event, enabled: boolean) => {
+    const on = Boolean(enabled)
+    const config = await readConfig()
+    await writeConfig({ ...config, discordRichPresence: on })
+    setDiscordEnabled(on)
+    return on
+  })
+  ipcMain.handle('discord:set-activity', (_event, activity: DiscordActivity) => {
+    setDiscordActivity(activity)
   })
   ipcMain.handle('app:relaunch', () => {
     app.relaunch()
@@ -291,15 +306,21 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   handleMediaProtocol(() => library)
   installCapturePermissions()
   registerIpc()
   createWindow()
+  const config = await readConfig()
+  if (config.discordRichPresence) setDiscordEnabled(true)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  stopDiscordPresence()
 })
 
 app.on('window-all-closed', () => {

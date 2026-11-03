@@ -73,6 +73,14 @@ export interface AppSettings {
   softwareWindow: boolean
   /** What this process actually launched with. A toggle change needs a restart. */
   softwareWindowActive: boolean
+  discordRichPresence: boolean
+}
+
+/** What Discord Rich Presence should show right now. */
+export interface DiscordActivity {
+  /** Canonical lab name, or null when not in a lab. */
+  lab: string | null
+  idle: boolean
 }
 
 export type TrimMode = 'new' | 'replace'
@@ -137,6 +145,8 @@ export interface MediaApi {
   getWindowSourceId(): Promise<string | null>
   getAppSettings(): Promise<AppSettings>
   setSoftwareWindow(enabled: boolean): Promise<boolean>
+  setDiscordRichPresence(enabled: boolean): Promise<boolean>
+  setDiscordActivity(activity: DiscordActivity): Promise<void>
   relaunchApp(): Promise<void>
   chooseSessionDir(): Promise<string | null>
   trimVideo(id: string, start: number, end: number, mode: TrimMode): Promise<TrimResult>

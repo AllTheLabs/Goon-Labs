@@ -71,10 +71,10 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
   const [paused, setPaused] = useState(false)
   const [speed, setSpeed] = useState(settings.speed)
   const [rumble, setRumble] = useState(settings.rumble)
-  const [effects, setEffects] = useEffectSettings('hypno.effects.v2', {
+  const [effects, setEffects] = useEffectSettings('hypno.effects.v3', {
     ...DEFAULT_EFFECTS,
     spiral: true,
-    tint: true,
+    tint: false,
     opacity: 0.15,
     spiralThickness: 0.04
   })
@@ -344,7 +344,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
         <video ref={aRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" loop />
         <video ref={bRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" loop />
         <div className="hypno-hue" />
-        {anyEffectActive(effects) && <EffectsOverlay settings={effects} />}
+        {anyEffectActive(effects) && <EffectsOverlay settings={effects} hideTint />}
         <div className="hypno-vignette" />
       </div>
       <div className="queue-flash hypno-flash" ref={flashRef} />
@@ -390,7 +390,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
         >
           <WandSparkles size={16} />
         </button>
-        {effectsPanelOpen && <EffectsPanel settings={effects} onChange={setEffects} />}
+        {effectsPanelOpen && <EffectsPanel settings={effects} onChange={setEffects} hideTint />}
 
         <div className="scroller-divider" />
 

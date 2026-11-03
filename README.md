@@ -10,7 +10,7 @@ Run `Goon-Labs-Setup-<version>.exe`. The installer is per-user by default and ca
 
 ## First launch
 
-The window opens **maximized**. Pick a **repository** folder. That folder is the library root. Goon Labs creates:
+The window opens **maximized**. Pick a **repository** folder. That folder is the library root. There is also an optional **Show Goon Labs on Discord** checkbox; it stays off unless you tick it. Goon Labs creates:
 
 | Path | Purpose |
 | --- | --- |
@@ -32,7 +32,9 @@ The main window is a grid of everything in the repository. Search names and tags
 - **Enter** opens the viewer, **Delete** moves files to the Recycle Bin, **Export** copies the selection somewhere else.
 - With one video selected, **Trim**, **Dilate**, and **GIF** on the selection bar (and in the details panel) open those utilities directly.
 
-The gear in the sidebar opens **Settings**: default folder for lab recordings, whether labs should start recording / webcam on, a **Software window rendering** toggle (CPU draws the window; ffmpeg jobs such as Time Dilation still use the GPU), and a keybind guide. That display toggle needs a restart.
+The gear in the sidebar opens **Settings**: default folder for lab recordings, whether labs should start recording / webcam on, **Discord Rich Presence** (off by default), a **Software window rendering** toggle (CPU draws the window; ffmpeg jobs such as Time Dilation still use the GPU), and a keybind guide. That display toggle needs a restart.
+
+On first launch you can also turn Discord Rich Presence on from the welcome screen. When it is on and the Discord desktop app is running, friends see **Playing AllTheLabs**, whether you are idle or browsing media, which lab you are in, and how long that lab session has lasted. Labs show as **In Goon Session -** plus the lab name. A button links to the GitHub releases page. Library contents are not sent.
 
 ## Labs
 
@@ -123,7 +125,7 @@ Full tables live in Settings. The ones you will hit most:
 
 ## Privacy
 
-Goon Labs is a local app. Media, tags, settings, and recordings stay in folders you choose on this machine. URL import talks to the sites you paste (and to yt-dlp’s GitHub releases when the downloader needs an update). Pixel Perfection downloads a local detector model on first use; video frames stay on this machine. There is no analytics account and no Goon Labs server.
+Goon Labs is a local app. Media, tags, settings, and recordings stay in folders you choose on this machine. URL import talks to the sites you paste (and to yt-dlp’s GitHub releases when the downloader needs an update). Pixel Perfection downloads a local detector model on first use; video frames stay on this machine. Discord Rich Presence, when you turn it on, talks only to the Discord desktop app on this machine so friends can see AllTheLabs is open — not your library. There is no analytics account and no Goon Labs server.
 
 ## Running from source
 
