@@ -59,7 +59,18 @@ async function captureWindow(): Promise<MediaStream> {
   }
 }
 
-export function useLabSession(labName: string, launch: Partial<LabPrefs> = {}) {
+function formatClock(seconds: number): string {
+  const total = Math.max(0, Math.ceil(seconds))
+  const m = Math.floor(total / 60)
+  const s = String(total % 60).padStart(2, '0')
+  return `${m}:${s}`
+}
+
+export function useLabSession(
+  labName: string,
+  launch: Partial<LabPrefs> = {},
+  onTimeUp?: () => void
+) {
   const { copy, icons } = useTheme()
   const LiveIcon = icons.live
   const [cam, setCam] = useState(loadCam)
@@ -69,6 +80,10 @@ export function useLabSession(labName: string, launch: Partial<LabPrefs> = {}) {
 
   const camRef = useRef<HTMLVideoElement>(null)
   const camStream = useRef<MediaStream | null>(null)
+  const onTimeUpRef = useRef(onTimeUp)
+  onTimeUpRef.current = onTimeUp
+  const timeUpFired = useRef(false)
+  const [remaining, setRemaining] = useState<number | null>(null)
   const captureStream = useRef<MediaStream | null>(null)
   const recorder = useRef<MediaRecorder | null>(null)
   const pendingWrites = useRef<Promise<void>[]>([])
@@ -194,6 +209,31 @@ export function useLabSession(labName: string, launch: Partial<LabPrefs> = {}) {
   }, [cameraOn, recording, startCamera, stopCamera, startRecording, stopRecording])
 
   useEffect(() => {
+    const limit = launch.sessionLimitSeconds
+    if (!limit || limit <= 0) {
+      setRemaining(null)
+      return
+    }
+    timeUpFired.current = false
+    const endsAt = Date.now() + limit * 1000
+    setRemaining(limit)
+    const id = window.setInterval(() => {
+      const left = (endsAt - Date.now()) / 1000
+      if (left <= 0) {
+        setRemaining(0)
+        window.clearInterval(id)
+        if (!timeUpFired.current) {
+          timeUpFired.current = true
+          onTimeUpRef.current?.()
+        }
+        return
+      }
+      setRemaining(left)
+    }, 200)
+    return () => window.clearInterval(id)
+  }, [launch.sessionLimitSeconds])
+
+  useEffect(() => {
     let cancelled = false
     void (async () => {
       if (launch.webcamOnEnter) {
@@ -237,6 +277,11 @@ export function useLabSession(labName: string, launch: Partial<LabPrefs> = {}) {
       {message && (
         <div className="lab-session-msg" onClick={() => setMessage(null)}>
           {message}
+        </div>
+      )}
+      {remaining !== null && remaining <= 60 && (
+        <div className="wind-down-island" aria-live="polite">
+          {formatClock(remaining)}
         </div>
       )}
     </>
@@ -287,5 +332,7 @@ export function useLabSession(labName: string, launch: Partial<LabPrefs> = {}) {
     </div>
   )
 
-  return { overlay, controls, recording }
+  const fade = remaining !== null && remaining <= 60 ? Math.max(0, remaining / 60) : 1
+
+  return { overlay, controls, recording, fade }
 }

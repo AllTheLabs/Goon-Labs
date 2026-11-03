@@ -40,7 +40,7 @@ const PULSE_SCALE: Record<BeatIntensity, number> = {
 
 export function QueuePlayer({ entries, settings, launch, onExit, onFinished }: QueuePlayerProps) {
   const { copy, theme } = useTheme()
-  const lab = useLabSession(copy.queue, launch)
+  const lab = useLabSession(copy.queue, launch, onExit)
   const videoRef = useRef<HTMLVideoElement>(null)
   const pulseRef = useRef<HTMLDivElement>(null)
   const flashRef = useRef<HTMLDivElement>(null)
@@ -98,8 +98,8 @@ export function QueuePlayer({ entries, settings, launch, onExit, onFinished }: Q
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
-    video.volume = muted ? 0 : volume * volume
-  }, [volume, muted, index, pass])
+    video.volume = muted ? 0 : volume * volume * lab.fade
+  }, [volume, muted, index, pass, lab.fade])
 
   useEffect(() => {
     const video = videoRef.current

@@ -82,7 +82,7 @@ function pixelate(
 
 export function PixelPlayer({ entries, settings, launch, onExit, onFinished }: PixelPlayerProps) {
   const { copy } = useTheme()
-  const lab = useLabSession(copy.pixelPerfection, launch)
+  const lab = useLabSession(copy.pixelPerfection, launch, onExit)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const scratchRef = useRef(document.createElement('canvas'))
@@ -184,8 +184,8 @@ export function PixelPlayer({ entries, settings, launch, onExit, onFinished }: P
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
-    video.volume = muted ? 0 : volume * volume
-  }, [volume, muted, index, pass])
+    video.volume = muted ? 0 : volume * volume * lab.fade
+  }, [volume, muted, index, pass, lab.fade])
 
   useEffect(() => {
     const video = videoRef.current

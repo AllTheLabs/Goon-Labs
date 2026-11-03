@@ -52,9 +52,11 @@ Labs are full-screen players. They can show a webcam overlay (move and resize it
 
 **C** toggles the webcam, **R** starts or stops recording. You can also tick those on in the setup dialog, or set them as defaults in Settings.
 
+Each lab’s setup screen has a **Session time**. Leave it empty and the lab runs until the queue ends or you exit. Set a time and the session winds down: in the last 60 seconds a countdown island appears at the bottom, audio fades, and the lab closes when the clock hits zero. Session time is per visit, not a saved default.
+
 ### Scroller
 
-Pick tags (or use every video) and play matching clips in a tiled, endlessly scrolling wall. Hover focus, overlay effects, tile size, and speed live on the bottom bar. Small preview copies are generated in the background so many videos can play at once.
+Pick tags (or use every video) and play matching clips in a tiled, endlessly scrolling wall. Hover focus, overlay effects, tile size, and speed live on the top bar. Small preview copies are generated in the background so many videos can play at once.
 
 ### Beat Bar
 

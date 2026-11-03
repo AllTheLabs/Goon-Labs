@@ -55,7 +55,7 @@ function waitFor(video: HTMLVideoElement, event: 'loadedmetadata' | 'seeked', ti
 
 export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: HypnoPlayerProps) {
   const { copy } = useTheme()
-  const lab = useLabSession(copy.hypnoStation, launch)
+  const lab = useLabSession(copy.hypnoStation, launch, onExit)
   const stageRef = useRef<HTMLDivElement>(null)
   const flashRef = useRef<HTMLDivElement>(null)
   const aRef = useRef<HTMLVideoElement>(null)
@@ -103,7 +103,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
     reverb.attach(a)
     reverb.attach(b)
     reverb.resume()
-    reverb.setVolume(muted ? 0 : volume)
+    reverb.setVolume((muted ? 0 : volume) * lab.fade)
     reverb.setRumble(rumbleRef.current)
 
     let active = 0
@@ -276,8 +276,8 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
   }, [entries, onFailed])
 
   useEffect(() => {
-    engineRef.current?.setVolume(muted ? 0 : volume)
-  }, [volume, muted])
+    engineRef.current?.setVolume((muted ? 0 : volume) * lab.fade)
+  }, [volume, muted, lab.fade])
 
   useEffect(() => {
     engineRef.current?.setRumble(rumble)

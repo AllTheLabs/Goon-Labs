@@ -92,7 +92,7 @@ function createPicker(videos: MediaItem[]) {
 
 export function Scroller({ videos, tags, previewIds, launch, onClose }: ScrollerProps) {
   const { copy } = useTheme()
-  const lab = useLabSession(copy.scroller, launch)
+  const lab = useLabSession(copy.scroller, launch, onClose)
   const stageRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
 
@@ -183,8 +183,8 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
   }, [])
 
   useEffect(() => {
-    mixer?.setVolume(muted ? 0 : volume)
-  }, [mixer, volume, muted])
+    mixer?.setVolume((muted ? 0 : volume) * lab.fade)
+  }, [mixer, volume, muted, lab.fade])
 
   useEffect(() => {
     if (!hoverFocus) mixer?.setFocus(null)
@@ -345,7 +345,7 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
       {lab.overlay}
 
       <div
-        className="scroller-controls"
+        className="scroller-controls queue-controls"
         onClick={(e) => e.stopPropagation()}
         onMouseEnter={() => {
           overControls.current = true
