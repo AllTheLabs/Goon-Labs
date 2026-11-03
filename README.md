@@ -8,7 +8,7 @@ Everything stays on this computer. There is no account, no cloud, and nothing is
 
 Run `Goon-Labs-Setup-<version>.exe`. The installer is per-user by default and can put shortcuts on the desktop and Start menu.
 
-The library toolbar has an **Update** button (with the installed version beside it). Click it to check GitHub Releases. If a newer installer is up, the button lights up in the current theme; click again to download and install. You can also check from Settings.
+The library toolbar has an **Update** button (with the installed version beside it). Click it to check GitHub Releases. If a newer installer is up, the button lights up in the current theme; click again to download. A logo overlay fills from top to bottom while it downloads, then the new version installs silently and Goon Labs reopens with the GitHub release notes. You can also check from Settings.
 
 Each GitHub release needs these files from `dist/` after `npm run dist`:
 
@@ -135,7 +135,7 @@ Full tables live in Settings. The ones you will hit most:
 
 ## Privacy
 
-Goon Labs is a local app. Media, tags, settings, and recordings stay in folders you choose on this machine. URL import talks to the sites you paste (and to yt-dlp’s GitHub releases when the downloader needs an update). Pixel Perfection downloads a local detector model on first use; video frames stay on this machine. On startup it checks GitHub Releases (`latest.yml`) for a newer installer; that only reads the public release list. Discord Rich Presence, when you turn it on, talks only to the Discord desktop app on this machine so friends can see AllTheLabs is open — not your library. There is no analytics account and no Goon Labs server.
+Goon Labs is a local app. Media, tags, settings, and recordings stay in folders you choose on this machine. URL import talks to the sites you paste (and to yt-dlp’s GitHub releases when the downloader needs an update). Pixel Perfection downloads a local detector model on first use; video frames stay on this machine. On startup it checks GitHub Releases (`latest.yml`) for a newer installer; that only reads the public release list. After an update it also fetches those public release notes to show in the app. Discord Rich Presence, when you turn it on, talks only to the Discord desktop app on this machine so friends can see AllTheLabs is open — not your library. There is no analytics account and no Goon Labs server.
 
 ## Running from source
 

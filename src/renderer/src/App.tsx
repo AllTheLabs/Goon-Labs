@@ -18,7 +18,7 @@ import {
   Upload,
   X
 } from 'lucide-react'
-import type { DownloadJob, ImportResult, LibraryState, MediaItem } from '../../shared/types'
+import type { AppChangelog, DownloadJob, ImportResult, LibraryState, MediaItem } from '../../shared/types'
 import { DetailsPanel } from './components/DetailsPanel'
 import { MediaGrid } from './components/MediaGrid'
 import { Scroller } from './components/Scroller'
@@ -42,6 +42,8 @@ import { TimeDilationSetup } from './components/TimeDilationSetup'
 import { Trimmer } from './components/Trimmer'
 import { TrimmerSetup } from './components/TrimmerSetup'
 import { ThemePicker } from './components/ThemePicker'
+import { Changelog } from './components/Changelog'
+import { UpdateOverlay } from './components/UpdateOverlay'
 import { UrlImport } from './components/UrlImport'
 import type { LabPrefs } from './labPrefs'
 import { useTheme } from './themes'
@@ -109,6 +111,7 @@ export function App() {
 
   const [toasts, setToasts] = useState<Toast[]>([])
   const [dragging, setDragging] = useState(false)
+  const [changelog, setChangelog] = useState<AppChangelog | null>(null)
   const dragDepth = useRef(0)
   const toastId = useRef(0)
 
@@ -121,6 +124,10 @@ export function App() {
       () => setToasts((current) => current.filter((t) => t.id !== id)),
       kind === 'error' ? 9000 : 5000
     )
+  }, [])
+
+  useEffect(() => {
+    void window.api.getPendingChangelog().then(setChangelog)
   }, [])
 
   useEffect(() => {
@@ -602,16 +609,44 @@ export function App() {
   useDiscordPresence(activeLab)
   const update = useAppUpdate()
   const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const updateOverlay =
+    update.state === 'downloading' || update.state === 'ready' ? (
+      <UpdateOverlay
+        progress={update.state === 'ready' ? 1 : update.progress}
+        version={update.version}
+        installing={update.state === 'ready'}
+      />
+    ) : null
+  const changelogModal = changelog ? (
+    <Changelog
+      notes={changelog}
+      onClose={() => {
+        void window.api.dismissChangelog()
+        setChangelog(null)
+      }}
+    />
+  ) : null
 
   if (loading) {
     return (
-      <div className="splash">
-        <Loader2 className="spin" size={28} />
-      </div>
+      <>
+        <div className="splash">
+          <Loader2 className="spin" size={28} />
+        </div>
+        {updateOverlay}
+      </>
     )
   }
 
-  if (!library) return <Welcome onChoose={chooseRepository} />
+  if (!library) {
+    return (
+      <>
+        <Welcome onChoose={chooseRepository} />
+        {updateOverlay}
+        {changelogModal}
+      </>
+    )
+  }
 
   const viewerIndex = viewerId ? visible.findIndex((i) => i.id === viewerId) : -1
   const filtersActive = query !== '' || activeTags.length > 0 || typeFilter !== 'all' || untaggedView
@@ -1028,6 +1063,8 @@ export function App() {
       )}
 
       <Toasts toasts={toasts} onDismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
+      {updateOverlay}
+      {changelogModal}
     </div>
   )
 }

@@ -155,7 +155,8 @@ export function Settings({ onClose }: SettingsProps) {
           <h3>Updates</h3>
           <p className="hint">
             This copy is {update.currentVersion || '…'}. Goon Labs checks GitHub Releases for a newer
-            installer when it starts. Nothing from your library is sent.
+            installer when it starts. Updates install in the background with no wizard, then the
+            release notes open in the app. Nothing from your library is sent.
           </p>
           {update.state === 'available' && (
             <button className="btn btn-primary btn-sm" onClick={() => void window.api.installUpdate()}>

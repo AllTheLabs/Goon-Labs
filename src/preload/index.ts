@@ -49,6 +49,9 @@ const api: MediaApi = {
     ipcRenderer.on('update:status', handler)
     return () => ipcRenderer.removeListener('update:status', handler)
   },
+  getPendingChangelog: () => ipcRenderer.invoke('changelog:pending'),
+  dismissChangelog: () => ipcRenderer.invoke('changelog:dismiss'),
+  openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
   chooseSessionDir: () => ipcRenderer.invoke('settings:choose-session-dir'),
   trimVideo: (id, start, end, mode) => ipcRenderer.invoke('media:trim', id, start, end, mode),

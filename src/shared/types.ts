@@ -76,6 +76,19 @@ export interface AppSettings {
   discordRichPresence: boolean
 }
 
+export interface ChangelogRelease {
+  version: string
+  title: string
+  body: string
+  url: string
+}
+
+export interface AppChangelog {
+  currentVersion: string
+  fromVersion: string
+  releases: ChangelogRelease[]
+}
+
 export type AppUpdateStatus =
   | { state: 'idle'; currentVersion: string }
   | { state: 'available'; currentVersion: string; version: string }
@@ -158,6 +171,9 @@ export interface MediaApi {
   checkForUpdate(): Promise<AppUpdateStatus>
   installUpdate(): Promise<AppUpdateStatus>
   onUpdateStatus(listener: (status: AppUpdateStatus) => void): () => void
+  getPendingChangelog(): Promise<AppChangelog | null>
+  dismissChangelog(): Promise<void>
+  openExternal(url: string): Promise<void>
   relaunchApp(): Promise<void>
   chooseSessionDir(): Promise<string | null>
   trimVideo(id: string, start: number, end: number, mode: TrimMode): Promise<TrimResult>

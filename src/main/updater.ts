@@ -40,7 +40,7 @@ autoUpdater.on('download-progress', (progress) => {
 autoUpdater.on('update-downloaded', (info) => {
   pendingVersion = info.version
   emit({ state: 'ready', currentVersion: current(), version: info.version })
-  autoUpdater.quitAndInstall(false, true)
+  setTimeout(() => autoUpdater.quitAndInstall(true, true), 700)
 })
 
 autoUpdater.on('error', (err) => {

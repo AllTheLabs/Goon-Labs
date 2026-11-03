@@ -2,6 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { existsSync, promises as fs, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { DilationSpan, DiscordActivity, GifOptions, ImportSource, TrimMode } from '../shared/types'
+import { dismissChangelog, pendingChangelog } from './changelog'
 import { checkForUpdate, getUpdateStatus, installUpdate, onUpdateStatus } from './updater'
 import { DownloadManager } from './downloads'
 import { Library } from './library'
@@ -19,6 +20,8 @@ interface AppConfig {
   softwareWindow?: boolean
   /** Show AllTheLabs on Discord. Off by default. */
   discordRichPresence?: boolean
+  /** Last version whose GitHub release notes were shown. */
+  lastChangelogVersion?: string
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -264,6 +267,25 @@ function registerIpc(): void {
   ipcMain.handle('update:status', () => getUpdateStatus())
   ipcMain.handle('update:check', () => checkForUpdate())
   ipcMain.handle('update:install', () => installUpdate())
+  ipcMain.handle('changelog:pending', () =>
+    pendingChangelog(
+      readConfig,
+      async (lastChangelogVersion) => {
+        const config = await readConfig()
+        await writeConfig({ ...config, lastChangelogVersion })
+      }
+    )
+  )
+  ipcMain.handle('changelog:dismiss', () =>
+    dismissChangelog(async (lastChangelogVersion) => {
+      const config = await readConfig()
+      await writeConfig({ ...config, lastChangelogVersion })
+    })
+  )
+  ipcMain.handle('shell:open-external', (_event, url: string) => {
+    if (!/^https?:\/\//i.test(url)) return
+    return shell.openExternal(url)
+  })
 
   ipcMain.handle('settings:choose-session-dir', async () => {
     const config = await readConfig()
