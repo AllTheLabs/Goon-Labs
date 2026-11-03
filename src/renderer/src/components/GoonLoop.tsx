@@ -245,6 +245,7 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
           ref={videoRef}
           className="trimmer-video"
           src={mediaUrl(item)}
+          crossOrigin="anonymous"
           playsInline
           onLoadedMetadata={onMeta}
         />

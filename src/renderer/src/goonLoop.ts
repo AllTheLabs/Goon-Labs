@@ -9,6 +9,7 @@ const FRAME_W = 48
 const FRAME_H = 27
 const MAX_SAMPLES = 16
 const MIN_LOOP = 0.4
+const SEEK_TIMEOUT_MS = 2500
 
 function sampleTimes(from: number, to: number, cap: number): number[] {
   if (to <= from) return [from]
@@ -19,26 +20,62 @@ function sampleTimes(from: number, to: number, cap: number): number[] {
   return times
 }
 
-function waitSeek(video: HTMLVideoElement, time: number): Promise<void> {
-  const clamped = Math.min(Math.max(0, time), video.duration || time)
-  if (Math.abs(video.currentTime - clamped) < 0.0005) return Promise.resolve()
-  return new Promise((resolve, reject) => {
-    const onSeeked = () => {
-      cleanup()
+function waitForFrame(video: HTMLVideoElement): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
       resolve()
     }
-    const onError = () => {
-      cleanup()
-      reject(new Error('Could not read a frame'))
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      video.requestVideoFrameCallback(() => finish())
     }
-    const cleanup = () => {
-      video.removeEventListener('seeked', onSeeked)
-      video.removeEventListener('error', onError)
-    }
-    video.addEventListener('seeked', onSeeked)
-    video.addEventListener('error', onError)
-    video.currentTime = clamped
+    requestAnimationFrame(() => requestAnimationFrame(finish))
+    window.setTimeout(finish, 250)
   })
+}
+
+async function waitSeek(video: HTMLVideoElement, time: number): Promise<void> {
+  const duration = Number.isFinite(video.duration) ? video.duration : time
+  const clamped = Math.min(Math.max(0, time), Math.max(0, duration - 0.001))
+  if (Math.abs(video.currentTime - clamped) > 0.02) {
+    await new Promise<void>((resolve, reject) => {
+      let settled = false
+      const finish = (fn: () => void) => {
+        if (settled) return
+        settled = true
+        window.clearTimeout(timer)
+        video.removeEventListener('seeked', onSeeked)
+        video.removeEventListener('error', onError)
+        fn()
+      }
+      const onSeeked = () => finish(resolve)
+      const onError = () => finish(() => reject(new Error('Could not read a frame')))
+      const timer = window.setTimeout(() => finish(resolve), SEEK_TIMEOUT_MS)
+      video.addEventListener('seeked', onSeeked)
+      video.addEventListener('error', onError)
+      try {
+        video.currentTime = clamped
+      } catch (err) {
+        finish(() => reject(err instanceof Error ? err : new Error('Could not read a frame')))
+      }
+    })
+  }
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    await new Promise<void>((resolve) => {
+      const timer = window.setTimeout(resolve, 800)
+      video.addEventListener(
+        'loadeddata',
+        () => {
+          window.clearTimeout(timer)
+          resolve()
+        },
+        { once: true }
+      )
+    })
+  }
+  await waitForFrame(video)
 }
 
 function toGray(data: Uint8ClampedArray): Uint8Array {
@@ -77,9 +114,21 @@ async function grabFrame(
   ctx: CanvasRenderingContext2D,
   time: number
 ): Promise<Uint8Array> {
-  await waitSeek(video, time)
-  ctx.drawImage(video, 0, 0, FRAME_W, FRAME_H)
-  return toGray(ctx.getImageData(0, 0, FRAME_W, FRAME_H).data)
+  let lastError: unknown
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await waitSeek(video, time)
+      if (video.videoWidth < 2 || video.videoHeight < 2) {
+        throw new Error('Could not read a frame')
+      }
+      ctx.drawImage(video, 0, 0, FRAME_W, FRAME_H)
+      return toGray(ctx.getImageData(0, 0, FRAME_W, FRAME_H).data)
+    } catch (err) {
+      lastError = err
+      await waitForFrame(video)
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Could not read a frame')
 }
 
 function yieldFrame(): Promise<void> {
@@ -114,39 +163,48 @@ export async function findSeamlessLoop(
   const total = startTimes.length + endTimes.length
   let done = 0
 
-  const grab = async (time: number) => {
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-    const frame = await grabFrame(video, ctx, time)
-    done += 1
-    onProgress?.(done / (total + 1))
-    await yieldFrame()
-    return frame
+  const grabAt = async (times: number[]): Promise<{ time: number; frame: Uint8Array }[]> => {
+    const grabbed: { time: number; frame: Uint8Array }[] = []
+    for (const time of times) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      try {
+        grabbed.push({ time, frame: await grabFrame(video, ctx, time) })
+      } catch {
+        // Sparse keyframes or a single bad seek shouldn't abort the whole search.
+      }
+      done += 1
+      onProgress?.(done / (total + 1))
+      await yieldFrame()
+    }
+    return grabbed
   }
 
-  let startFrames: Uint8Array[]
-  let endFrames: Uint8Array[]
+  let startSamples: { time: number; frame: Uint8Array }[]
+  let endSamples: { time: number; frame: Uint8Array }[]
   try {
-    startFrames = []
-    for (const time of startTimes) startFrames.push(await grab(time))
-    endFrames = []
-    for (const time of endTimes) endFrames.push(await grab(time))
+    startSamples = await grabAt(startTimes)
+    endSamples = await grabAt(endTimes)
   } catch (err) {
     if ((err as Error).name === 'AbortError') throw err
     throw new Error('Could not read frames from this video')
   }
 
+  if (startSamples.length === 0 || endSamples.length === 0) {
+    throw new Error('Could not read frames from this video')
+  }
+
   let best = { start: spanStart, end: spanEnd, score: Number.POSITIVE_INFINITY }
-  for (let i = 0; i < startFrames.length; i++) {
-    const startVar = variance(startFrames[i])
-    for (let j = 0; j < endFrames.length; j++) {
-      const loopLen = endTimes[j] - startTimes[i]
+  for (const startSample of startSamples) {
+    const startVar = variance(startSample.frame)
+    for (const endSample of endSamples) {
+      const loopLen = endSample.time - startSample.time
       if (loopLen < MIN_LOOP) continue
-      let score = mse(startFrames[i], endFrames[j])
-      if (startVar < 48 || variance(endFrames[j]) < 48) score += 900
+      let score = mse(startSample.frame, endSample.frame)
+      if (startVar < 48 || variance(endSample.frame) < 48) score += 900
       // Prefer a slightly longer loop when the wrap looks similar.
       score -= (loopLen / span) * 18
       if (score < best.score) {
-        best = { start: startTimes[i], end: endTimes[j], score }
+        best = { start: startSample.time, end: endSample.time, score }
       }
     }
   }
@@ -156,7 +214,7 @@ export async function findSeamlessLoop(
     throw new Error('Could not find a loop in that span')
   }
 
-  const rawMse = Math.max(0, best.score + (best.end - best.start) / span * 18)
+  const rawMse = Math.max(0, best.score + ((best.end - best.start) / span) * 18)
   const quality = Math.max(0, Math.min(100, Math.round(100 - Math.sqrt(rawMse) * 1.35)))
   return { start: best.start, end: best.end, quality }
 }
