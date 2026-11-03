@@ -3,6 +3,7 @@ import { Clock, Search, X } from 'lucide-react'
 import type { MediaItem } from '../../../shared/types'
 import { useTheme } from '../themes'
 import { mediaUrl, plural } from '../utils'
+import { LabTagPicker } from './LabTagPicker'
 import { matchVideos } from './ScrollerSetup'
 import type { TagMatch } from './ScrollerSetup'
 
@@ -35,7 +36,7 @@ export function TimeDilationSetup({ videos, initialId, onPick, onClose }: TimeDi
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
     return matchVideos(videos, tags, match).filter((video) => {
       const name = video.fileName.toLowerCase()
-      return terms.every((term) => name.includes(term) || video.tags.some((tag) => tag.includes(term)))
+      return terms.every((term) => name.includes(term))
     })
   }, [videos, tags, match, query])
 
@@ -74,22 +75,11 @@ export function TimeDilationSetup({ videos, initialId, onPick, onClose }: TimeDi
           <p className="modal-empty">Import some videos first — Time Dilation only works with videos.</p>
         ) : (
           <>
-            <div className="scroller-setup-row">
-              <span className="field-label">Find a video</span>
-              <div className="segmented small">
-                <button className={match === 'any' ? 'active' : ''} onClick={() => setMatch('any')}>
-                  Any tag
-                </button>
-                <button className={match === 'all' ? 'active' : ''} onClick={() => setMatch('all')}>
-                  All tags
-                </button>
-              </div>
-            </div>
             <div className="search">
               <Search size={16} className="search-icon" />
               <input
                 className="input search-input"
-                placeholder="Search names & tags…"
+                placeholder="Search names…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 autoFocus
@@ -100,25 +90,18 @@ export function TimeDilationSetup({ videos, initialId, onPick, onClose }: TimeDi
                 </button>
               )}
             </div>
-            {videoTagCounts.length > 0 && (
-              <div className="tag-picker">
-                {videoTagCounts.map(([tag, count]) => (
-                  <button
-                    key={tag}
-                    className={`tag-pick ${tags.includes(tag) ? 'active' : ''}`}
-                    onClick={() =>
-                      setTags((current) =>
-                        current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag]
-                      )
-                    }
-                  >
-                    <TagIcon size={13} />
-                    {tag}
-                    <span className="tag-pick-count">{count}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+            <LabTagPicker
+              counts={videoTagCounts}
+              selected={tags}
+              onToggle={(tag) =>
+                setTags((current) =>
+                  current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag]
+                )
+              }
+              match={match}
+              onMatch={setMatch}
+              icon={TagIcon}
+            />
             {selected && (
               <div className="trimmer-pick-preview">
                 <video src={`${mediaUrl(selected)}#t=0.5`} muted preload="metadata" playsInline />

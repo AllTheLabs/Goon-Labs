@@ -6,6 +6,7 @@ import { useTheme } from '../themes'
 import { plural } from '../utils'
 import { defaultLabLaunch, LabStartToggles } from './LabStartToggles'
 import type { QueueEntry } from './QueueSetup'
+import { LabTagPicker } from './LabTagPicker'
 import { matchVideos } from './ScrollerSetup'
 import type { TagMatch } from './ScrollerSetup'
 
@@ -89,7 +90,7 @@ export function PixelSetup({ videos, initialTags, onStart, onClose }: PixelSetup
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
     return matchVideos(videos, tags, match).filter((video) => {
       const name = video.fileName.toLowerCase()
-      return terms.every((term) => name.includes(term) || video.tags.some((tag) => tag.includes(term)))
+      return terms.every((term) => name.includes(term))
     })
   }, [videos, tags, match, query])
 
@@ -161,20 +162,12 @@ export function PixelSetup({ videos, initialTags, onStart, onClose }: PixelSetup
               <section className="queue-column">
                 <div className="queue-column-head">
                   <span className="field-label">Find videos</span>
-                  <div className="segmented small">
-                    <button className={match === 'any' ? 'active' : ''} onClick={() => setMatch('any')}>
-                      Any tag
-                    </button>
-                    <button className={match === 'all' ? 'active' : ''} onClick={() => setMatch('all')}>
-                      All tags
-                    </button>
-                  </div>
                 </div>
                 <div className="search">
                   <Search size={16} className="search-icon" />
                   <input
                     className="input search-input"
-                    placeholder="Search names & tags…"
+                    placeholder="Search names…"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     autoFocus
@@ -185,21 +178,14 @@ export function PixelSetup({ videos, initialTags, onStart, onClose }: PixelSetup
                     </button>
                   )}
                 </div>
-                {videoTagCounts.length > 0 && (
-                  <div className="tag-picker queue-tags">
-                    {videoTagCounts.map(([tag, count]) => (
-                      <button
-                        key={tag}
-                        className={`tag-pick ${tags.includes(tag) ? 'active' : ''}`}
-                        onClick={() => toggleTag(tag)}
-                      >
-                        <TagIcon size={13} />
-                        {tag}
-                        <span className="tag-pick-count">{count}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <LabTagPicker
+                  counts={videoTagCounts}
+                  selected={tags}
+                  onToggle={toggleTag}
+                  match={match}
+                  onMatch={setMatch}
+                  icon={TagIcon}
+                />
                 <div className="queue-list">
                   {matched.length === 0 ? (
                     <p className="queue-empty">No videos match.</p>

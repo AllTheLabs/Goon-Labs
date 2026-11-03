@@ -64,6 +64,7 @@ const HYPNO_KEYS: [string, string][] = [
   ['→', 'Next snippet'],
   ['1 / 2 / 3', 'Linger / Flash / Strobe'],
   ['B', 'Melodic rumble on / off'],
+  ['E', 'Overlay effects'],
   ['M', 'Mute'],
   ['↑ / ↓', 'Volume'],
   ['C', 'Webcam on / off'],

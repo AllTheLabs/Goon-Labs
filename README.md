@@ -62,7 +62,7 @@ Detection is local and imperfect — boxes can miss, sit slightly off the target
 
 ### Hypno Station
 
-**Labs → Hypno Station**. Queue videos, then watch random snippets cut together on a loop until you exit. Each cut pulses. Audio runs through a wet reverb. A colour wash drifts from pink through magenta and purple over the picture. A dry **melodic rumble** (on by default) plays a dark synth arpeggio in time with the cuts, with the bass kick as the last note of each phrase, and stays out of the reverb — toggle it in setup or with **B** in the lab.
+**Labs → Hypno Station**. Queue videos, then watch random snippets cut together on a loop until you exit. Each cut pulses. Audio runs through a wet reverb. A colour wash drifts from pink through magenta and purple over the picture. A dry **melodic rumble** (on by default) plays a dark synth arpeggio in time with the cuts, with the bass kick as the last note of each phrase, and stays out of the reverb — toggle it in setup or with **B** in the lab. Overlay effects from the Scroller are here too (**E**); the pink spiral starts on.
 
 Cut speed is **Linger**, **Flash**, or **Strobe** (1 / 2 / 3 in the lab). The melody follows that speed. **→** jumps to the next snippet.
 
@@ -118,7 +118,7 @@ Full tables live in Settings. The ones you will hit most:
 | Library | Ctrl+V import URL, Ctrl+A select all, Enter open, Delete, Esc |
 | Scroller / Beat Bar / Pixel Perfection / Hypno Station | Space pause, C webcam, R record, Esc exit |
 | Pixel Perfection | F faces, N NSFW, D skip dark, [ ] mosaic |
-| Hypno Station | 1/2/3 cut speed, B rumble, → next snippet |
+| Hypno Station | 1/2/3 cut speed, B rumble, E overlays, → next snippet |
 | Trimmer / Time Dilation / GIF | Space play/pause, Esc close |
 
 ## Privacy

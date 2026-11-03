@@ -14,7 +14,7 @@ export interface EffectSettings {
 }
 
 const STORAGE_KEY = 'scroller.effects'
-const DEFAULT_SETTINGS: EffectSettings = {
+export const DEFAULT_EFFECTS: EffectSettings = {
   spiral: false,
   heart: false,
   particles: false,
@@ -24,15 +24,18 @@ const DEFAULT_SETTINGS: EffectSettings = {
 }
 
 /** Effect settings, remembered between sessions. */
-export function useEffectSettings() {
+export function useEffectSettings(
+  storageKey = STORAGE_KEY,
+  defaults: EffectSettings = DEFAULT_EFFECTS
+) {
   const [settings, setSettings] = useState<EffectSettings>(() => {
     try {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') }
+      return { ...defaults, ...JSON.parse(localStorage.getItem(storageKey) ?? '{}') }
     } catch {
-      return DEFAULT_SETTINGS
+      return defaults
     }
   })
-  useEffect(() => localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)), [settings])
+  useEffect(() => localStorage.setItem(storageKey, JSON.stringify(settings)), [settings, storageKey])
   return [settings, setSettings] as const
 }
 

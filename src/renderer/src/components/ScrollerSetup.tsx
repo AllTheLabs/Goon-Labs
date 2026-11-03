@@ -3,6 +3,7 @@ import { Clapperboard, Hash, Play, X } from 'lucide-react'
 import type { MediaItem } from '../../../shared/types'
 import type { LabPrefs } from '../labPrefs'
 import { plural } from '../utils'
+import { LabTagPicker } from './LabTagPicker'
 import { defaultLabLaunch, LabStartToggles } from './LabStartToggles'
 
 export type TagMatch = 'any' | 'all'
@@ -70,36 +71,20 @@ export function ScrollerSetup({ videos, initialTags, onStart, onClose }: Scrolle
           <p className="modal-empty">Import some videos first — the Scroller only plays videos.</p>
         ) : (
           <>
-            <div className="scroller-setup-row">
-              <span className="field-label">Video tags</span>
-              <div className="segmented">
-                <button className={match === 'any' ? 'active' : ''} onClick={() => setMatch('any')}>
-                  Match any
-                </button>
-                <button className={match === 'all' ? 'active' : ''} onClick={() => setMatch('all')}>
-                  Match all
-                </button>
-              </div>
-            </div>
-
             {videoTagCounts.length === 0 ? (
               <p className="modal-empty">
                 None of your videos are tagged yet. You can still start with all of them.
               </p>
             ) : (
-              <div className="tag-picker">
-                {videoTagCounts.map(([tag, count]) => (
-                  <button
-                    key={tag}
-                    className={`tag-pick ${tags.includes(tag) ? 'active' : ''}`}
-                    onClick={() => toggle(tag)}
-                  >
-                    <Hash size={13} />
-                    {tag}
-                    <span className="tag-pick-count">{count}</span>
-                  </button>
-                ))}
-              </div>
+              <LabTagPicker
+                counts={videoTagCounts}
+                selected={tags}
+                onToggle={toggle}
+                match={match}
+                onMatch={setMatch}
+                icon={Hash}
+                autoFocus
+              />
             )}
 
             <LabStartToggles value={launch} onChange={setLaunch} />

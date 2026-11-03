@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pause, Play, Volume1, Volume2, VolumeX, Waves, X } from 'lucide-react'
+import { Pause, Play, Volume1, Volume2, VolumeX, WandSparkles, Waves, X } from 'lucide-react'
 import { HypnoReverb } from '../hypnoReverb'
 import type { LabPrefs } from '../labPrefs'
 import { useTheme } from '../themes'
@@ -8,6 +8,13 @@ import { useLabSession } from './LabSession'
 import { HYPNO_SPEEDS, saveHypnoSettings } from './HypnoSetup'
 import type { HypnoSettings, HypnoSpeed } from './HypnoSetup'
 import type { QueueEntry } from './QueueSetup'
+import {
+  anyEffectActive,
+  DEFAULT_EFFECTS,
+  EffectsOverlay,
+  EffectsPanel,
+  useEffectSettings
+} from './ScrollerEffects'
 
 interface HypnoPlayerProps {
   entries: QueueEntry[]
@@ -64,6 +71,12 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
   const [paused, setPaused] = useState(false)
   const [speed, setSpeed] = useState(settings.speed)
   const [rumble, setRumble] = useState(settings.rumble)
+  const [effects, setEffects] = useEffectSettings('hypno.effects', {
+    ...DEFAULT_EFFECTS,
+    spiral: true,
+    tint: true
+  })
+  const [effectsPanelOpen, setEffectsPanelOpen] = useState(false)
   const [volume, setVolume] = useState(0.8)
   const [muted, setMuted] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
@@ -305,6 +318,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
       else if (key === '2') setSpeed('flash')
       else if (key === '3') setSpeed('strobe')
       else if (key === 'b') setRumble((on) => !on)
+      else if (key === 'e') setEffectsPanelOpen((open) => !open)
       else if (key === 'arrowup') setVolume((v) => Math.min(1, v + 0.05))
       else if (key === 'arrowdown') setVolume((v) => Math.max(0, v - 0.05))
       else return
@@ -328,6 +342,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
         <video ref={aRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" loop />
         <video ref={bRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" loop />
         <div className="hypno-hue" />
+        {anyEffectActive(effects) && <EffectsOverlay settings={effects} />}
         <div className="hypno-vignette" />
       </div>
       <div className="queue-flash hypno-flash" ref={flashRef} />
@@ -366,6 +381,14 @@ export function HypnoPlayer({ entries, settings, launch, onExit, onFailed }: Hyp
         >
           <Waves size={16} /> Rumble
         </button>
+        <button
+          className={`scroller-btn ${anyEffectActive(effects) || effectsPanelOpen ? 'active' : ''}`}
+          onClick={() => setEffectsPanelOpen((open) => !open)}
+          title="Overlay effects (E)"
+        >
+          <WandSparkles size={16} />
+        </button>
+        {effectsPanelOpen && <EffectsPanel settings={effects} onChange={setEffects} />}
 
         <div className="scroller-divider" />
 

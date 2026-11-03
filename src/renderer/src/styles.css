@@ -861,12 +861,15 @@ p {
   padding: 0 6px 0 11px;
   border-radius: 999px;
   background: var(--accent-soft);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border: 1px solid var(--accent);
+  color: var(--text);
   font-size: 13px;
+  font-weight: 600;
 }
 .tag-chip.partial {
   background: transparent;
   border-style: dashed;
+  color: var(--text-dim);
 }
 .tag-chip button {
   width: 18px;
@@ -880,7 +883,7 @@ p {
   padding: 0;
 }
 .tag-chip button:hover {
-  background: color-mix(in srgb, var(--text) 12%, transparent);
+  background: var(--bg-hover);
   color: var(--text);
 }
 .tag-note {
@@ -894,6 +897,29 @@ p {
 .tag-input-row .input {
   flex: 1;
   min-width: 0;
+}
+.quick-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.quick-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+.quick-tag:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 /* ---------- Viewer ---------- */
@@ -1201,6 +1227,10 @@ p {
   cursor: not-allowed;
 }
 
+.scroller-setup {
+  width: min(720px, 94vw);
+  gap: 20px;
+}
 .scroller-setup-row {
   display: flex;
   align-items: center;
@@ -1826,13 +1856,14 @@ p {
 /* ---------- Beat queue: setup ---------- */
 
 .queue-setup {
-  width: min(940px, 94vw);
-  max-height: 88vh;
+  width: min(1120px, 96vw);
+  max-height: 92vh;
+  gap: 20px;
 }
 .queue-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 22px;
   min-height: 0;
   flex: 1;
 }
@@ -1862,18 +1893,29 @@ p {
   flex: none;
   min-width: 0;
 }
-.queue-tags {
-  max-height: 84px;
-  flex: none;
+.lab-tag-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
 }
-.queue-tags .tag-pick {
-  height: 28px;
-  font-size: 12px;
+.lab-tags {
+  min-height: 148px;
+  max-height: 240px;
+  padding: 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  align-content: flex-start;
+}
+.scroller-setup .lab-tags {
+  min-height: 180px;
+  max-height: 320px;
 }
 .queue-list {
   flex: 1;
-  min-height: 220px;
-  max-height: 340px;
+  min-height: 180px;
+  max-height: 280px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -2134,15 +2176,18 @@ button.queue-row:hover .queue-row-add {
   background: #ff4d9a;
   animation: hypno-hue 16s linear infinite;
 }
+.hypno-stage .effects-root {
+  z-index: 3;
+}
 .hypno-vignette {
   position: absolute;
   inset: 0;
-  z-index: 3;
+  z-index: 4;
   pointer-events: none;
   background: radial-gradient(ellipse at 50% 50%, transparent 42%, rgba(20, 0, 28, 0.72) 100%);
 }
 .hypno-flash {
-  z-index: 4;
+  z-index: 5;
   background: radial-gradient(circle at 50% 50%, rgba(255, 120, 200, 0.55) 0%, transparent 62%);
 }
 @keyframes hypno-hue {
@@ -2169,6 +2214,10 @@ button.queue-row:hover .queue-row-add {
   top: 20px;
   bottom: auto;
   transition: opacity 0.25s;
+}
+.queue-controls .effects-panel {
+  bottom: auto;
+  top: calc(100% + 10px);
 }
 .queue-player.idle .queue-controls {
   opacity: 0;
@@ -2748,7 +2797,8 @@ button.queue-row:hover .queue-row-add {
   font-size: 13px;
 }
 .trimmer-setup {
-  width: min(640px, 94vw);
+  width: min(720px, 94vw);
+  gap: 18px;
 }
 .trimmer-pick-preview {
   display: flex;
