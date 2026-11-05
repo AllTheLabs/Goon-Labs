@@ -15,11 +15,13 @@ import type {
   LibraryViewStats,
   MediaItem,
   MediaType,
+  ThumbReadyEvent,
   TrimMode
 } from '../shared/types'
 import { DILATION_FACTORS, GIF_FPS, GIF_QUALITIES } from '../shared/types'
 import { mediaTypeOf } from './mediaTypes'
 import { FFMPEG, h264EncodeArgs, PreviewManager, probeVideo, runFfmpeg } from './previews'
+import { ThumbManager } from './thumbs'
 
 const DILATION_TAG = 'time dilated'
 const LOOP_TAG = 'goon loop'
@@ -38,6 +40,7 @@ const MEDIA_FOLDERS: Record<MediaType, string> = {
   image: 'Pictures',
   video: 'Videos'
 }
+export const SESSIONS_FOLDER = 'sessions'
 const DATA_FOLDER = '.mediamanager'
 const DATABASE_FILE = 'library.json'
 const SHELF_FILE = 'shelf.json'
@@ -51,6 +54,12 @@ interface ShelfFile {
 interface Database {
   version: number
   items: MediaItem[]
+  sessions?: MediaItem[]
+}
+
+function isSessionRel(relPath: string): boolean {
+  const rel = relPath.split('\\').join('/')
+  return rel === SESSIONS_FOLDER || rel.startsWith(`${SESSIONS_FOLDER}/`)
 }
 
 export function normalizeTag(tag: string): string {
@@ -272,29 +281,44 @@ async function copyWithUniqueName(source: string, dir: string, fileName: string)
 
 export class Library {
   private items = new Map<string, MediaItem>()
+  private sessions = new Map<string, MediaItem>()
   private pinnedIds: string[] = []
   private views: Record<string, LibraryViewStats> = {}
   private saveQueue: Promise<void> = Promise.resolve()
+  private metaSaveTimer: ReturnType<typeof setTimeout> | null = null
   private readonly previews: PreviewManager
+  private readonly thumbs: ThumbManager
+  private readonly onSync: ((state: LibraryState) => void) | null
 
   private constructor(
     readonly root: string,
-    onPreviewProgress: (id: string | null, remaining: number) => void
+    onPreviewProgress: (id: string | null, remaining: number) => void,
+    onThumbProgress: (event: ThumbReadyEvent) => void,
+    onSync: ((state: LibraryState) => void) | null
   ) {
     this.previews = new PreviewManager(root, onPreviewProgress)
+    this.thumbs = new ThumbManager(root, (event) => {
+      if (event.id) this.applyThumbMeta(event)
+      onThumbProgress(event)
+    })
+    this.onSync = onSync
   }
 
   static async open(
     root: string,
-    onPreviewProgress: (id: string | null, remaining: number) => void
+    onPreviewProgress: (id: string | null, remaining: number) => void,
+    onThumbProgress: (event: ThumbReadyEvent) => void,
+    onSync?: (state: LibraryState) => void
   ): Promise<Library> {
-    const library = new Library(path.resolve(root), onPreviewProgress)
+    const library = new Library(path.resolve(root), onPreviewProgress, onThumbProgress, onSync ?? null)
     await library.ensureFolders()
     await library.load()
     await library.loadShelf()
-    await library.sync()
-    await library.previews.load(new Set(library.items.keys()))
-    library.queuePreviews(library.list())
+    const known = new Set([...library.items.keys(), ...library.sessions.keys()])
+    await Promise.all([library.thumbs.load(known), library.previews.load(known)])
+    library.indexItems(library.list())
+    library.indexThumbs(library.sessionList())
+    void library.hydrate()
     return library
   }
 
@@ -302,11 +326,18 @@ export class Library {
     return {
       root: this.root,
       items: this.list(),
+      sessions: this.sessionList(),
       previewIds: this.previews.readyIds,
       previewsPending: this.previews.remaining,
+      thumbIds: this.thumbs.readyIds,
+      thumbsPending: this.thumbs.remaining,
       pinnedIds: [...this.pinnedIds],
       views: { ...this.views }
     }
+  }
+
+  get sessionsPath(): string {
+    return path.join(this.root, SESSIONS_FOLDER)
   }
 
   get shelf(): LibraryShelf {
@@ -321,12 +352,95 @@ export class Library {
     )
   }
 
+  private indexThumbs(items: MediaItem[]): void {
+    this.thumbs.enqueue(
+      items.map((item) => ({
+        id: item.id,
+        source: path.join(this.root, item.relPath),
+        type: item.type
+      }))
+    )
+  }
+
+  private indexItems(items: MediaItem[]): void {
+    this.indexThumbs(items)
+    this.queuePreviews(items)
+  }
+
+  private lookup(id: string): MediaItem | undefined {
+    return this.items.get(id) ?? this.sessions.get(id)
+  }
+
+  private place(item: MediaItem): void {
+    if (isSessionRel(item.relPath)) {
+      this.items.delete(item.id)
+      this.sessions.set(item.id, item)
+    } else {
+      this.sessions.delete(item.id)
+      this.items.set(item.id, item)
+    }
+  }
+
+  prioritizeThumbs(ids: string[]): void {
+    this.thumbs.prioritize(ids)
+  }
+
+  private async hydrate(): Promise<void> {
+    try {
+      await this.sync()
+    } catch (err) {
+      console.warn('[library] sync failed', (err as Error).message)
+    }
+    this.onSync?.(this.state)
+  }
+
+  private applyThumbMeta(event: ThumbReadyEvent): void {
+    if (!event.id) return
+    const item = this.lookup(event.id)
+    if (!item) return
+    let changed = false
+    if (item.type === 'video' && event.duration && event.duration !== item.duration) {
+      item.duration = event.duration
+      changed = true
+    }
+    if (event.width && event.width !== item.width) {
+      item.width = event.width
+      changed = true
+    }
+    if (event.height && event.height !== item.height) {
+      item.height = event.height
+      changed = true
+    }
+    if (changed) this.saveSoon()
+  }
+
+  private saveSoon(): void {
+    if (this.metaSaveTimer) return
+    this.metaSaveTimer = setTimeout(() => {
+      this.metaSaveTimer = null
+      void this.save()
+    }, 2000)
+  }
+
+  private async refreshDerivatives(ids: string[]): Promise<void> {
+    await this.thumbs.forget(ids)
+    const items = ids.map((id) => this.lookup(id)).filter((item): item is MediaItem => Boolean(item))
+    const libraryItems = items.filter((item) => this.items.has(item.id))
+    if (libraryItems.length > 0) await this.previews.forget(libraryItems.map((item) => item.id))
+    this.indexThumbs(items)
+    this.queuePreviews(libraryItems)
+  }
+
   list(): MediaItem[] {
     return [...this.items.values()]
   }
 
+  sessionList(): MediaItem[] {
+    return [...this.sessions.values()]
+  }
+
   item(id: string): MediaItem | undefined {
-    return this.items.get(id)
+    return this.lookup(id)
   }
 
   /** Resolves a repository-relative path, refusing anything that escapes the repository. */
@@ -336,14 +450,66 @@ export class Library {
   }
 
   absolutePathOf(id: string): string | null {
-    const item = this.items.get(id)
+    const item = this.lookup(id)
     return item ? this.resolve(item.relPath) : null
+  }
+
+  /**
+   * Adds a finished lab recording from `sessions/`. Thumbs only — sessions stay out of the
+   * main library and lab setups.
+   */
+  async ingestSession(absPath: string): Promise<MediaItem | null> {
+    if (!isInside(this.sessionsPath, absPath)) return null
+    const rel = toRelPath(this.root, absPath)
+    const type = mediaTypeOf(absPath)
+    if (!type) return null
+    let stat
+    try {
+      stat = await fs.stat(absPath)
+    } catch {
+      return null
+    }
+    const existing = [...this.sessions.values()].find((item) => item.relPath === rel)
+    if (existing) {
+      existing.size = stat.size
+      existing.fileName = path.basename(absPath)
+      await this.save()
+      await this.refreshDerivatives([existing.id])
+      this.onSync?.(this.state)
+      return existing
+    }
+    const item: MediaItem = {
+      id: randomUUID(),
+      fileName: path.basename(absPath),
+      relPath: rel,
+      type,
+      size: stat.size,
+      importedAt: new Date().toISOString(),
+      tags: []
+    }
+    this.sessions.set(item.id, item)
+    await this.save()
+    this.indexThumbs([item])
+    this.onSync?.(this.state)
+    return item
   }
 
   /** Re-reads the media folders, picking up files added outside the app and dropping missing ones. */
   async sync(): Promise<void> {
+    const libraryAdded = await this.syncCatalog(Object.values(MEDIA_FOLDERS), this.items)
+    const sessionAdded = await this.syncCatalog([SESSIONS_FOLDER], this.sessions)
+    if (libraryAdded.changed || sessionAdded.changed) await this.save()
+    if (this.pruneShelf()) await this.saveShelf()
+    this.indexItems(libraryAdded.added)
+    this.indexThumbs(sessionAdded.added)
+  }
+
+  private async syncCatalog(
+    folders: string[],
+    catalog: Map<string, MediaItem>
+  ): Promise<{ changed: boolean; added: MediaItem[] }> {
     const onDisk = new Set<string>()
-    for (const folder of Object.values(MEDIA_FOLDERS)) {
+    for (const folder of folders) {
       for (const file of await walkFiles(path.join(this.root, folder))) {
         if (mediaTypeOf(file)) onDisk.add(toRelPath(this.root, file))
       }
@@ -351,11 +517,11 @@ export class Library {
 
     let changed = false
     const known = new Set<string>()
-    for (const item of this.items.values()) {
+    for (const item of catalog.values()) {
       if (onDisk.has(item.relPath)) {
         known.add(item.relPath)
       } else {
-        this.items.delete(item.id)
+        catalog.delete(item.id)
         changed = true
       }
     }
@@ -374,14 +540,11 @@ export class Library {
         importedAt: stat.birthtime.toISOString(),
         tags: []
       }
-      this.items.set(item.id, item)
+      catalog.set(item.id, item)
       added.push(item)
       changed = true
     }
-
-    if (changed) await this.save()
-    if (this.pruneShelf()) await this.saveShelf()
-    this.queuePreviews(added)
+    return { changed, added }
   }
 
   /** Pin ids that are not already pinned. If every id is already pinned, unpin them. */
@@ -462,7 +625,7 @@ export class Library {
     }
 
     if (result.imported.length > 0) await this.save()
-    this.queuePreviews(result.imported)
+    this.indexItems(result.imported)
     return result
   }
 
@@ -476,7 +639,7 @@ export class Library {
     end: number,
     mode: 'new' | 'replace'
   ): Promise<{ item: MediaItem; replaced: boolean }> {
-    const item = this.items.get(id)
+    const item = this.lookup(id)
     if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
     const source = this.absolutePathOf(id)
     if (!source) throw new Error('The video file is missing')
@@ -537,9 +700,9 @@ export class Library {
         importedAt: new Date().toISOString(),
         tags: [...item.tags]
       }
-      this.items.set(next.id, next)
+      this.place(next)
       await this.save()
-      this.queuePreviews([next])
+      this.indexItems([next])
       return { item: next, replaced: false }
     }
 
@@ -567,8 +730,7 @@ export class Library {
     item.size = stat.size
     item.importedAt = new Date().toISOString()
     await this.save()
-    await this.previews.forget([item.id])
-    this.queuePreviews([item])
+    await this.refreshDerivatives([item.id])
     return { item, replaced: true }
   }
 
@@ -582,7 +744,7 @@ export class Library {
     end: number,
     mode: TrimMode
   ): Promise<{ item: MediaItem; replaced: boolean }> {
-    const item = this.items.get(id)
+    const item = this.lookup(id)
     if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
     const source = this.absolutePathOf(id)
     if (!source) throw new Error('The video file is missing')
@@ -644,9 +806,9 @@ export class Library {
         importedAt: new Date().toISOString(),
         tags
       }
-      this.items.set(next.id, next)
+      this.place(next)
       await this.save()
-      this.queuePreviews([next])
+      this.indexItems([next])
       return { item: next, replaced: false }
     }
 
@@ -675,8 +837,7 @@ export class Library {
     item.importedAt = new Date().toISOString()
     item.tags = tags
     await this.save()
-    await this.previews.forget([item.id])
-    this.queuePreviews([item])
+    await this.refreshDerivatives([item.id])
     return { item, replaced: true }
   }
 
@@ -691,7 +852,7 @@ export class Library {
     mode: TrimMode,
     interpolate = false
   ): Promise<{ item: MediaItem; replaced: boolean }> {
-    const item = this.items.get(id)
+    const item = this.lookup(id)
     if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
     const source = this.absolutePathOf(id)
     if (!source) throw new Error('The video file is missing')
@@ -754,9 +915,9 @@ export class Library {
         importedAt: new Date().toISOString(),
         tags
       }
-      this.items.set(next.id, next)
+      this.place(next)
       await this.save()
-      this.queuePreviews([next])
+      this.indexItems([next])
       return { item: next, replaced: false }
     }
 
@@ -785,8 +946,7 @@ export class Library {
     item.importedAt = new Date().toISOString()
     item.tags = tags
     await this.save()
-    await this.previews.forget([item.id])
-    this.queuePreviews([item])
+    await this.refreshDerivatives([item.id])
     return { item, replaced: true }
   }
 
@@ -800,7 +960,7 @@ export class Library {
     spans: SpliceSpan[],
     mode: TrimMode
   ): Promise<{ item: MediaItem; replaced: boolean }> {
-    const item = this.items.get(id)
+    const item = this.lookup(id)
     if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
     const source = this.absolutePathOf(id)
     if (!source) throw new Error('The video file is missing')
@@ -862,9 +1022,9 @@ export class Library {
         importedAt: new Date().toISOString(),
         tags: [...item.tags]
       }
-      this.items.set(next.id, next)
+      this.place(next)
       await this.save()
-      this.queuePreviews([next])
+      this.indexItems([next])
       return { item: next, replaced: false }
     }
 
@@ -892,8 +1052,7 @@ export class Library {
     item.size = stat.size
     item.importedAt = new Date().toISOString()
     await this.save()
-    await this.previews.forget([item.id])
-    this.queuePreviews([item])
+    await this.refreshDerivatives([item.id])
     return { item, replaced: true }
   }
 
@@ -908,7 +1067,7 @@ export class Library {
     options: GifOptions,
     mode: TrimMode
   ): Promise<{ item: MediaItem; replaced: boolean }> {
-    const item = this.items.get(id)
+    const item = this.lookup(id)
     if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
     const source = this.absolutePathOf(id)
     if (!source) throw new Error('The video file is missing')
@@ -973,8 +1132,9 @@ export class Library {
         importedAt: new Date().toISOString(),
         tags
       }
-      this.items.set(next.id, next)
+      this.place(next)
       await this.save()
+      this.indexItems([next])
       return { item: next, replaced: false }
     }
 
@@ -1002,7 +1162,7 @@ export class Library {
     item.importedAt = new Date().toISOString()
     item.tags = tags
     await this.save()
-    await this.previews.forget([item.id])
+    await this.refreshDerivatives([item.id])
     return { item, replaced: true }
   }
 
@@ -1023,18 +1183,20 @@ export class Library {
   async deleteItems(ids: string[]): Promise<DeleteResult> {
     const result: DeleteResult = { deletedIds: [], failed: [] }
     for (const id of ids) {
-      const item = this.items.get(id)
+      const item = this.lookup(id)
       if (!item) continue
       const source = this.absolutePathOf(id)
       try {
         if (source) await trashOrGone(source)
         this.items.delete(id)
+        this.sessions.delete(id)
         result.deletedIds.push(id)
       } catch (err) {
         result.failed.push({ fileName: item.fileName, reason: (err as Error).message })
       }
     }
     if (result.deletedIds.length > 0) {
+      await this.thumbs.forget(result.deletedIds)
       await this.previews.forget(result.deletedIds)
       await this.save()
       if (this.pruneShelf()) await this.saveShelf()
@@ -1047,7 +1209,7 @@ export class Library {
     const result: ExportResult = { destination, exported: 0, failed: [] }
     await fs.mkdir(destination, { recursive: true })
     for (const id of ids) {
-      const item = this.items.get(id)
+      const item = this.lookup(id)
       const source = this.absolutePathOf(id)
       if (!item || !source) continue
       try {
@@ -1066,7 +1228,7 @@ export class Library {
   ): Promise<MediaItem[]> {
     const updated: MediaItem[] = []
     for (const id of ids) {
-      const item = this.items.get(id)
+      const item = this.lookup(id)
       if (!item) continue
       item.tags = update(item.tags)
       updated.push(item)
@@ -1130,7 +1292,7 @@ export class Library {
   }
 
   private async ensureFolders(): Promise<void> {
-    for (const folder of [...Object.values(MEDIA_FOLDERS), DATA_FOLDER]) {
+    for (const folder of [...Object.values(MEDIA_FOLDERS), SESSIONS_FOLDER, DATA_FOLDER]) {
       await fs.mkdir(path.join(this.root, folder), { recursive: true })
     }
   }
@@ -1143,14 +1305,15 @@ export class Library {
       return
     }
     const db = JSON.parse(raw) as Database
-    for (const item of db.items ?? []) this.items.set(item.id, item)
+    for (const item of db.items ?? []) this.place(item)
+    for (const item of db.sessions ?? []) this.place(item)
   }
 
   private save(): Promise<void> {
     const write = async (): Promise<void> => {
-      const db: Database = { version: DATABASE_VERSION, items: this.list() }
+      const db: Database = { version: DATABASE_VERSION, items: this.list(), sessions: this.sessionList() }
       const tmp = `${this.databasePath}.tmp`
-      await fs.writeFile(tmp, JSON.stringify(db, null, 2), 'utf8')
+      await fs.writeFile(tmp, JSON.stringify(db), 'utf8')
       await fs.rename(tmp, this.databasePath)
     }
     this.saveQueue = this.saveQueue.then(write, write)

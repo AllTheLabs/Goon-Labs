@@ -1,3 +1,5 @@
+import { setLabAudioCapture } from './labAudioCapture'
+
 interface Channel {
   source: MediaElementAudioSourceNode
   gain: GainNode
@@ -16,6 +18,7 @@ const DUCKED = 0.12
 export class AudioMixer {
   private readonly ctx = new AudioContext()
   private readonly master = this.ctx.createGain()
+  private readonly captureDest = this.ctx.createMediaStreamDestination()
   private readonly channels = new Map<number, Channel>()
   // An element can only ever be wrapped by one MediaElementAudioSourceNode.
   private readonly sources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>()
@@ -28,7 +31,10 @@ export class AudioMixer {
     compressor.ratio.value = 4
     compressor.attack.value = 0.01
     compressor.release.value = 0.25
-    this.master.connect(compressor).connect(this.ctx.destination)
+    this.master.connect(compressor)
+    compressor.connect(this.ctx.destination)
+    compressor.connect(this.captureDest)
+    setLabAudioCapture(() => this.captureDest.stream)
     this.setVolume(volume)
   }
 
@@ -71,6 +77,7 @@ export class AudioMixer {
   }
 
   close(): void {
+    setLabAudioCapture(null)
     void this.ctx.close()
   }
 

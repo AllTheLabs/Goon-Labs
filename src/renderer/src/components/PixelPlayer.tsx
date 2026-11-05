@@ -19,6 +19,7 @@ import { createPixelDetector, isDarkSkinRegion, isSkipDarkMaleBox, smoothBoxes }
 import type { PixelBox, PixelDetector } from '../pixelDetect'
 import { useTheme } from '../themes'
 import { mediaUrl } from '../utils'
+import { ElementAudioTap } from '../elementAudioTap'
 import { useLabSession } from './LabSession'
 import {
   clampPixelStrength,
@@ -187,6 +188,20 @@ export function PixelPlayer({ entries, settings, launch, onExit }: PixelPlayerPr
       advance()
     }
   }
+
+  const tapRef = useRef<ElementAudioTap | null>(null)
+  useEffect(() => {
+    const tap = new ElementAudioTap()
+    tapRef.current = tap
+    return () => {
+      tapRef.current = null
+      tap.close()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (videoRef.current) tapRef.current?.attach(videoRef.current)
+  }, [index, pass])
 
   useEffect(() => {
     const video = videoRef.current

@@ -25,18 +25,39 @@ export async function runFfmpeg(args: string[]): Promise<void> {
   if (!result.ok) throw new Error(result.stderr.trim() || 'ffmpeg failed')
 }
 
-/** Reads duration, fps, and whether an audio stream exists from ffmpeg's file probe. */
-export async function probeVideo(
-  source: string
-): Promise<{ duration: number; hasAudio: boolean; fps: number }> {
-  const result = await run(['-hide_banner', '-i', source])
-  const match = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(result.stderr)
+export interface MediaInfo {
+  duration: number
+  hasAudio: boolean
+  fps: number
+  width: number
+  height: number
+}
+
+export function parseMediaInfo(stderr: string): MediaInfo {
+  const match = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(stderr)
   const duration = match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) : 0
-  const fpsMatch = /(\d+(?:\.\d+)?)\s*fps/.exec(result.stderr)
-  const tbrMatch = /(\d+(?:\.\d+)?)\s*tbr/.exec(result.stderr)
+  const fpsMatch = /(\d+(?:\.\d+)?)\s*fps/.exec(stderr)
+  const tbrMatch = /(\d+(?:\.\d+)?)\s*tbr/.exec(stderr)
   let fps = Number(fpsMatch?.[1] ?? tbrMatch?.[1] ?? 30)
   if (!Number.isFinite(fps) || fps < 1 || fps > 120) fps = 30
-  return { duration, hasAudio: /Audio:/.test(result.stderr), fps }
+  const dim = /Video:.*?(\d{2,5})x(\d{2,5})/.exec(stderr)
+  return {
+    duration,
+    hasAudio: /Audio:/.test(stderr),
+    fps,
+    width: dim ? Number(dim[1]) : 0,
+    height: dim ? Number(dim[2]) : 0
+  }
+}
+
+/** Reads duration, fps, dimensions, and whether an audio stream exists from ffmpeg's file probe. */
+export async function probeVideo(source: string): Promise<MediaInfo> {
+  const result = await run(['-hide_banner', '-i', source])
+  return parseMediaInfo(result.stderr)
+}
+
+export function runFfmpegRaw(args: string[]): Promise<{ ok: boolean; stderr: string }> {
+  return run(args)
 }
 
 function run(args: string[]): Promise<{ ok: boolean; stderr: string }> {

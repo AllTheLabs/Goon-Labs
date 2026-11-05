@@ -1,7 +1,7 @@
 import { Clock, Combine, Download, Expand, FolderSearch, Image, MousePointerClick, Pin, Repeat, Scissors, Trash2 } from 'lucide-react'
 import type { MediaItem } from '../../../shared/types'
-import { extensionOf, formatBytes, formatDate, mediaUrl, plural } from '../utils'
-import { MediaPreview } from './MediaPreview'
+import { extensionOf, formatBytes, formatDate, formatDuration, plural } from '../utils'
+import { DurationBadge, ItemThumb } from './ItemThumb'
 import { TagEditor } from './TagEditor'
 import type { TagChip } from './TagEditor'
 
@@ -14,7 +14,9 @@ interface DetailsPanelProps {
   onAddTags: (ids: string[], tags: string[]) => void
   onRemoveTag: (ids: string[], tag: string) => void
   pinnedIds: Set<string>
+  thumbIds: Set<string>
   onTogglePin: (ids: string[]) => void
+  showPin?: boolean
   onOpenViewer: (id: string) => void
   onOpenTrimmer: (item: MediaItem) => void
   onOpenSplicer: (item: MediaItem) => void
@@ -56,7 +58,9 @@ function SingleDetails({
   onAddTags,
   onRemoveTag,
   pinnedIds,
+  thumbIds,
   onTogglePin,
+  showPin,
   onOpenViewer,
   onOpenTrimmer,
   onOpenSplicer,
@@ -70,7 +74,8 @@ function SingleDetails({
   return (
     <div className="details-body">
       <div className="details-preview">
-        <MediaPreview item={item} className="details-media" />
+        <ItemThumb item={item} ready={thumbIds.has(item.id)} className="details-media" />
+        <DurationBadge item={item} />
         <button
           className="preview-expand"
           onClick={() => onOpenViewer(item.id)}
@@ -91,6 +96,12 @@ function SingleDetails({
         </dd>
         <dt>Size</dt>
         <dd>{formatBytes(item.size)}</dd>
+        {item.type === 'video' && item.duration != null && item.duration > 0 && (
+          <>
+            <dt>Duration</dt>
+            <dd>{formatDuration(item.duration)}</dd>
+          </>
+        )}
         <dt>Imported</dt>
         <dd>{formatDate(item.importedAt)}</dd>
         <dt>Location</dt>
@@ -117,10 +128,12 @@ function SingleDetails({
         <button className="btn btn-secondary" onClick={() => onOpenViewer(item.id)}>
           <Expand size={16} /> View
         </button>
-        <button className="btn btn-secondary" onClick={() => onTogglePin([item.id])}>
-          <Pin size={16} fill={pinnedIds.has(item.id) ? 'currentColor' : 'none'} />
-          {pinnedIds.has(item.id) ? 'Unpin' : 'Pin'}
-        </button>
+        {showPin !== false && (
+          <button className="btn btn-secondary" onClick={() => onTogglePin([item.id])}>
+            <Pin size={16} fill={pinnedIds.has(item.id) ? 'currentColor' : 'none'} />
+            {pinnedIds.has(item.id) ? 'Unpin' : 'Pin'}
+          </button>
+        )}
         <button className="btn btn-secondary" onClick={() => onReveal(item.id)}>
           <FolderSearch size={16} /> Show in folder
         </button>
@@ -163,7 +176,9 @@ function MultiDetails({
   onAddTags,
   onRemoveTag,
   pinnedIds,
+  thumbIds,
   onTogglePin,
+  showPin,
   onExport,
   onDelete
 }: DetailsPanelProps) {
@@ -185,13 +200,9 @@ function MultiDetails({
   return (
     <div className="details-body">
       <div className="stack-preview">
-        {items.slice(0, 4).map((item) =>
-          item.type === 'image' ? (
-            <img key={item.id} src={mediaUrl(item)} alt="" draggable={false} />
-          ) : (
-            <video key={item.id} src={`${mediaUrl(item)}#t=0.5`} preload="metadata" muted />
-          )
-        )}
+        {items.slice(0, 4).map((item) => (
+          <ItemThumb key={item.id} item={item} ready={thumbIds.has(item.id)} />
+        ))}
       </div>
 
       <h2 className="details-title">{plural(items.length, 'item')} selected</h2>
@@ -219,10 +230,12 @@ function MultiDetails({
       </section>
 
       <div className="details-actions">
-        <button className="btn btn-secondary full" onClick={() => onTogglePin(ids)}>
-          <Pin size={16} fill={allPinned ? 'currentColor' : 'none'} />
-          {allPinned ? 'Unpin' : 'Pin'} {items.length} items
-        </button>
+        {showPin !== false && (
+          <button className="btn btn-secondary full" onClick={() => onTogglePin(ids)}>
+            <Pin size={16} fill={allPinned ? 'currentColor' : 'none'} />
+            {allPinned ? 'Unpin' : 'Pin'} {items.length} items
+          </button>
+        )}
         <button className="btn btn-primary full" onClick={onExport}>
           <Download size={16} /> Export {items.length} copies…
         </button>

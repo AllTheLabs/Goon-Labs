@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { app, BrowserWindow, dialog, desktopCapturer, session as electronSession, shell } from 'electron'
+import { BrowserWindow, desktopCapturer, session as electronSession, shell } from 'electron'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { FFMPEG, h264EncodeArgs } from './previews'
@@ -7,19 +7,16 @@ import { FFMPEG, h264EncodeArgs } from './previews'
 type DisplayCallback = (streams: { video?: Electron.WebFrameMain; audio?: 'loopback' }) => void
 
 export interface BeginRecordingOptions {
-  sessionDir?: string | null
-  lastDir?: string | null
-  /** When false, skip the save dialog and write into the recordings folder. */
-  prompt?: boolean
+  sessionDir: string
 }
 
 function pad(n: number): string {
   return String(n).padStart(2, '0')
 }
 
-function stamp(): string {
+function dateStamp(): string {
   const d = new Date()
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}-${pad(d.getMinutes())}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 function safeName(name: string): string {
@@ -54,24 +51,11 @@ export class SessionRecording {
   private destPath: string | null = null
   private writes: Promise<void> = Promise.resolve()
 
-  async begin(labName: string, options: BeginRecordingOptions = {}): Promise<string | null> {
-    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
-    const preferred = options.sessionDir && (await exists(options.sessionDir)) ? options.sessionDir : null
-    const fallback = options.lastDir && (await exists(options.lastDir)) ? options.lastDir : app.getPath('videos')
-    const dir = preferred ?? fallback
-    let dest: string | null = null
-    if (preferred || options.prompt === false) {
-      dest = await uniqueMp4(dir, `${safeName(labName)} ${stamp()}`)
-    } else {
-      const { canceled, filePath } = await dialog.showSaveDialog(win ?? undefined, {
-        title: 'Save session recording',
-        defaultPath: path.join(dir, `${safeName(labName)} ${stamp()}.mp4`),
-        buttonLabel: 'Start recording',
-        filters: [{ name: 'MP4 video', extensions: ['mp4'] }]
-      })
-      if (canceled || !filePath) return null
-      dest = filePath.replace(/\.(mp4|webm)$/i, '') + '.mp4'
-    }
+  async begin(labName: string, options: BeginRecordingOptions): Promise<string | null> {
+    const dest = await uniqueMp4(
+      options.sessionDir,
+      `Goon Labs - ${safeName(labName)} - ${dateStamp()}`
+    )
     this.destPath = dest
     this.filePath = `${dest}.partial`
     await fs.mkdir(path.dirname(dest), { recursive: true })
@@ -139,12 +123,37 @@ async function uniqueMp4(dir: string, base: string): Promise<string> {
 
 /**
  * MediaRecorder WebM has no cues and often duplicate timestamps, so a copy-remux
- * freezes on the first frame. Re-encode to H.264 MP4 with fresh 30fps timestamps.
+ * freezes on the first frame. Re-encode to H.264 + AAC, keeping audio in time with
+ * the picture instead of rewriting video timestamps from the frame count.
  */
 async function remuxSeekable(src: string, dest: string): Promise<void> {
   const encoder = await h264EncodeArgs()
+  try {
+    await remuxOnce(src, dest, encoder, true)
+  } catch {
+    await remuxOnce(src, dest, encoder, false)
+  }
+}
+
+function remuxOnce(src: string, dest: string, encoder: string[], withAudio: boolean): Promise<void> {
   return new Promise((resolve, reject) => {
     if (!FFMPEG) return reject(new Error('ffmpeg is not available'))
+    const audio = withAudio
+      ? [
+          '-map',
+          '0:a:0?',
+          '-c:a',
+          'aac',
+          '-ar',
+          '48000',
+          '-ac',
+          '2',
+          '-b:a',
+          '192k',
+          '-af',
+          'aresample=async=1000:first_pts=0'
+        ]
+      : ['-an']
     const child = spawn(
       FFMPEG,
       [
@@ -152,6 +161,8 @@ async function remuxSeekable(src: string, dest: string): Promise<void> {
         '-hide_banner',
         '-loglevel',
         'error',
+        '-fflags',
+        '+genpts',
         '-analyzeduration',
         '100M',
         '-probesize',
@@ -160,19 +171,12 @@ async function remuxSeekable(src: string, dest: string): Promise<void> {
         src,
         '-map',
         '0:v:0',
-        '-map',
-        '0:a:0?',
-        '-vf',
-        'setpts=N/30/TB',
         '-r',
         '30',
         '-pix_fmt',
         'yuv420p',
         ...encoder,
-        '-c:a',
-        'aac',
-        '-b:a',
-        '192k',
+        ...audio,
         '-movflags',
         '+faststart',
         dest
@@ -189,11 +193,3 @@ async function remuxSeekable(src: string, dest: string): Promise<void> {
   })
 }
 
-async function exists(dir: string): Promise<boolean> {
-  try {
-    await fs.access(dir)
-    return true
-  } catch {
-    return false
-  }
-}

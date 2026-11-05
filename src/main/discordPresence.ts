@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { createConnection, type Socket } from 'node:net'
 import type { DiscordActivity } from '../shared/types'
 
-/** Public Discord application id. The Discord app is named AllTheLabs. Not a secret. */
+/** Public Discord application id. Not a secret. */
 const CLIENT_ID = '1567198321322496070'
 const RELEASES_URL = 'https://github.com/AllTheLabs/Goon-Labs/releases'
 const RETRY_MS = 15_000
@@ -20,6 +20,7 @@ interface Client {
 }
 
 let enabled = false
+let streak = 1
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let last: DiscordActivity = { lab: null, idle: false }
 let lastLab: string | null = null
@@ -70,7 +71,13 @@ function send(client: Client, opcode: number, payload: unknown): void {
 
 function activityPayload(): Record<string, unknown> {
   const buttons = [{ label: 'GitHub Releases', url: RELEASES_URL }]
-  const shared = { type: 0, name: 'AllTheLabs', buttons, instance: false }
+  const shared = {
+    type: 0,
+    name: 'Goon Labs',
+    state: `Goon Streak: ${streak}`,
+    buttons,
+    instance: false
+  }
   if (last.lab) {
     return {
       ...shared,
@@ -211,6 +218,13 @@ export function setDiscordEnabled(on: boolean): void {
     return
   }
   connect()
+}
+
+export function setDiscordStreak(count: number): void {
+  const next = Math.max(1, Math.round(count) || 1)
+  if (next === streak) return
+  streak = next
+  apply()
 }
 
 export function setDiscordActivity(activity: DiscordActivity): void {

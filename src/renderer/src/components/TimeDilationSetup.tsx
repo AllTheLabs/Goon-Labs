@@ -6,16 +6,17 @@ import { plural } from '../utils'
 import { LabTagPicker } from './LabTagPicker'
 import { matchVideos } from './ScrollerSetup'
 import type { TagMatch } from './ScrollerSetup'
-import { VideoPickThumb } from './VideoPickThumb'
+import { VideoPickList, VideoPickThumb } from './VideoPickThumb'
 
 interface TimeDilationSetupProps {
   videos: MediaItem[]
   initialId: string | null
+  thumbIds: Set<string>
   onPick: (video: MediaItem) => void
   onClose: () => void
 }
 
-export function TimeDilationSetup({ videos, initialId, onPick, onClose }: TimeDilationSetupProps) {
+export function TimeDilationSetup({ videos, initialId, thumbIds, onPick, onClose }: TimeDilationSetupProps) {
   const { copy, icons } = useTheme()
   const DilationIcon = icons.timeDilation
   const TagIcon = icons.tag
@@ -29,17 +30,18 @@ export function TimeDilationSetup({ videos, initialId, onPick, onClose }: TimeDi
   const [query, setQuery] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [match, setMatch] = useState<TagMatch>('any')
+  const [excluded, setExcluded] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(
     initialId && videos.some((video) => video.id === initialId) ? initialId : null
   )
 
   const matched = useMemo(() => {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
-    return matchVideos(videos, tags, match).filter((video) => {
+    return matchVideos(videos, tags, match, excluded).filter((video) => {
       const name = video.fileName.toLowerCase()
       return terms.every((term) => name.includes(term))
     })
-  }, [videos, tags, match, query])
+  }, [videos, tags, match, excluded, query])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -101,39 +103,26 @@ export function TimeDilationSetup({ videos, initialId, onPick, onClose }: TimeDi
               }
               match={match}
               onMatch={setMatch}
+              excluded={excluded}
+              onExcluded={setExcluded}
               icon={TagIcon}
             />
             {selected && (
               <div className="trimmer-pick-preview">
-                <VideoPickThumb item={selected} size="preview" />
+                <VideoPickThumb item={selected} size="preview" ready={thumbIds.has(selected.id)} />
                 <div className="trimmer-pick-preview-meta">
                   <strong>{selected.fileName}</strong>
                   {selected.tags.length > 0 && <span>{selected.tags.join(' · ')}</span>}
                 </div>
               </div>
             )}
-            <div className="queue-list">
-              {matched.length === 0 ? (
-                <p className="queue-empty">No videos match.</p>
-              ) : (
-                matched.map((video) => (
-                  <button
-                    key={video.id}
-                    className={`queue-row ${video.id === selectedId ? 'selected' : ''}`}
-                    onClick={() => setSelectedId(video.id)}
-                    onDoubleClick={() => onPick(video)}
-                  >
-                    <VideoPickThumb item={video} size="row" />
-                    <span className="queue-row-text">
-                      <span className="queue-row-name">{video.fileName}</span>
-                      {video.tags.length > 0 && (
-                        <span className="queue-row-tags">{video.tags.join(' · ')}</span>
-                      )}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
+            <VideoPickList
+              videos={matched}
+              selectedId={selectedId}
+              thumbIds={thumbIds}
+              onSelect={setSelectedId}
+              onPick={onPick}
+            />
             <footer className="modal-footer">
               <span className="modal-summary">{plural(matched.length, 'video')}</span>
               <button className="btn btn-primary" disabled={!selected} onClick={() => selected && onPick(selected)}>

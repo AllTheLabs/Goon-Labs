@@ -18,6 +18,7 @@ import { useTheme } from '../themes'
 import { mediaUrl } from '../utils'
 import { BeatBar, INTENSITIES } from './BeatBar'
 import type { BeatIntensity } from './BeatBar'
+import { ElementAudioTap } from '../elementAudioTap'
 import { useLabSession } from './LabSession'
 import { saveQueueSettings } from './QueueSetup'
 import type { QueueEntry, QueueSettings } from './QueueSetup'
@@ -98,6 +99,20 @@ export function QueuePlayer({ entries, settings, launch, onExit }: QueuePlayerPr
       advance()
     }
   }
+
+  const tapRef = useRef<ElementAudioTap | null>(null)
+  useEffect(() => {
+    const tap = new ElementAudioTap()
+    tapRef.current = tap
+    return () => {
+      tapRef.current = null
+      tap.close()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (videoRef.current) tapRef.current?.attach(videoRef.current)
+  }, [index, pass])
 
   useEffect(() => {
     const video = videoRef.current

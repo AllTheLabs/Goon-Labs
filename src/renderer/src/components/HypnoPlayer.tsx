@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pause, Play, Volume1, Volume2, VolumeX, WandSparkles, Waves, X } from 'lucide-react'
+import { Heart, Loader2, Pause, Play, Volume1, Volume2, VolumeX, WandSparkles, Waves, X } from 'lucide-react'
+import { findSeamlessLoop, liveLoopSearchSpan } from '../goonLoop'
 import { HypnoReverb } from '../hypnoReverb'
 import type { LabPrefs } from '../labPrefs'
 import type { LabRecap } from '../labRecap'
@@ -31,6 +32,12 @@ interface Snippet {
   index: number
   start: number
   duration: number
+}
+
+interface LiveLock {
+  index: number
+  start: number
+  end: number
 }
 
 function waitFor(video: HTMLVideoElement, event: 'loadedmetadata' | 'seeked', timeoutMs = 8000): Promise<void> {
@@ -65,16 +72,26 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
   const aRef = useRef<HTMLVideoElement>(null)
   const bRef = useRef<HTMLVideoElement>(null)
   const skipRef = useRef<() => void>(() => {})
+  const probeRef = useRef<HTMLVideoElement>(null)
+  const lockRef = useRef<LiveLock | null>(null)
+  const playingRef = useRef<Snippet | null>(null)
+  const findAbort = useRef<AbortController | null>(null)
   const engineRef = useRef<{
     setVolume: (volume: number) => void
     setRumble: (on: boolean) => void
     pause: () => void
     resume: () => void
+    getPlayback: () => { index: number; currentTime: number } | null
+    rearmStandby: () => void
   } | null>(null)
 
   const [paused, setPaused] = useState(false)
   const [speed, setSpeed] = useState(settings.speed)
   const [rumble, setRumble] = useState(settings.rumble)
+  const [liveLoop, setLiveLoop] = useState(false)
+  const [liveLoopBusy, setLiveLoopBusy] = useState(false)
+  const [liveLoopHint, setLiveLoopHint] = useState<string | null>(null)
+  const liveLocks = useRef(0)
   const [effects, setEffects] = useEffectSettings('hypno.effects.v3', {
     ...DEFAULT_EFFECTS,
     spiral: true,
@@ -132,6 +149,11 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
 
     const pick = (): Snippet => {
       const spec = specNow()
+      const lock = lockRef.current
+      if (lock) {
+        lastIndex = lock.index
+        return { index: lock.index, start: lock.start, duration: spec.duration }
+      }
       let index = Math.floor(Math.random() * entries.length)
       if (entries.length > 1 && index === lastIndex) index = (index + 1) % entries.length
       lastIndex = index
@@ -141,14 +163,22 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
     const prepare = async (video: HTMLVideoElement, snippet: Snippet): Promise<Snippet> => {
       const item = entries[snippet.index].item
       const url = mediaUrl(item)
-      video.loop = true
+      const lock = lockRef.current
+      const locked = lock !== null && lock.index === snippet.index
+      video.loop = !locked
       if (video.getAttribute('src') !== url) {
         video.src = url
         await waitFor(video, 'loadedmetadata')
       }
       const clipDur = video.duration
       if (!Number.isFinite(clipDur) || clipDur < 0.15) throw new Error('clip too short')
-      const start = Math.random() * Math.max(0, clipDur - 0.08)
+      let start: number
+      if (locked && lock) {
+        const span = Math.max(0, lock.end - lock.start)
+        start = span <= 0.08 ? lock.start : lock.start + Math.random() * Math.max(0, span - 0.08)
+      } else {
+        start = Math.random() * Math.max(0, clipDur - 0.08)
+      }
       if (Math.abs(video.currentTime - start) > 0.04) {
         video.currentTime = start
         await waitFor(video, 'seeked')
@@ -187,6 +217,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
       const item = entries[snippet.index].item
       clipStats.current.shown++
       clipStats.current.unique.add(item.id)
+      playingRef.current = snippet
       setNowPlaying(item.fileName)
       setCuts(clipStats.current.shown)
     }
@@ -244,6 +275,25 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
       reverb.hit(spec.duration)
     }
 
+    let wrapping = false
+    let wrapRaf = 0
+    const wrapTick = () => {
+      wrapRaf = window.requestAnimationFrame(wrapTick)
+      const lock = lockRef.current
+      if (!lock || pausedRef.current || wrapping) return
+      const current = active === 0 ? a : b
+      if (current.currentTime >= lock.end - 0.03 && current.currentTime > lock.start + 0.05) {
+        wrapping = true
+        current.currentTime = lock.start
+        const done = () => {
+          wrapping = false
+        }
+        current.addEventListener('seeked', done, { once: true })
+        window.setTimeout(done, 400)
+      }
+    }
+    wrapRaf = window.requestAnimationFrame(wrapTick)
+
     engineRef.current = {
       setVolume: (level) => reverb.setVolume(level),
       setRumble: (on) => reverb.setRumble(on),
@@ -258,6 +308,19 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
         reverb.resume()
         void current.play().catch(() => {})
         beginBar()
+      },
+      getPlayback: () => {
+        const snippet = playingRef.current
+        if (!snippet) return null
+        const current = active === 0 ? a : b
+        return { index: snippet.index, currentTime: current.currentTime }
+      },
+      rearmStandby: () => {
+        const current = active === 0 ? a : b
+        current.loop = lockRef.current == null
+        const standby = active === 0 ? b : a
+        next = null
+        arm(standby)
       }
     }
 
@@ -277,6 +340,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
     return () => {
       closed = true
       armGen++
+      window.cancelAnimationFrame(wrapRaf)
       engineRef.current = null
       reverb.close()
     }
@@ -289,6 +353,58 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
   useEffect(() => {
     engineRef.current?.setRumble(rumble)
   }, [rumble])
+
+  useEffect(() => () => findAbort.current?.abort(), [])
+
+  const toggleLiveLoop = useCallback(() => {
+    if (liveLoopBusy) {
+      findAbort.current?.abort()
+      return
+    }
+    if (lockRef.current) {
+      lockRef.current = null
+      setLiveLoop(false)
+      setLiveLoopHint(null)
+      engineRef.current?.rearmStandby()
+      return
+    }
+    const playback = engineRef.current?.getPlayback()
+    const probe = probeRef.current
+    if (!playback || !probe) return
+    const item = entries[playback.index]?.item
+    if (!item) return
+
+    const controller = new AbortController()
+    findAbort.current = controller
+    setLiveLoopBusy(true)
+    setLiveLoopHint(null)
+
+    void (async () => {
+      try {
+        const url = mediaUrl(item)
+        if (probe.getAttribute('src') !== url) {
+          probe.src = url
+          await waitFor(probe, 'loadedmetadata')
+        }
+        if (controller.signal.aborted) return
+        const span = liveLoopSearchSpan(probe.duration, playback.currentTime)
+        const match = await findSeamlessLoop(probe, span.start, span.end, undefined, controller.signal)
+        if (controller.signal.aborted) return
+        lockRef.current = { index: playback.index, start: match.start, end: match.end }
+        liveLocks.current++
+        setLiveLoop(true)
+        engineRef.current?.rearmStandby()
+      } catch (err) {
+        if (controller.signal.aborted || (err as Error).name === 'AbortError') return
+        lockRef.current = null
+        setLiveLoop(false)
+        setLiveLoopHint("Couldn't find a loop")
+      } finally {
+        if (findAbort.current === controller) findAbort.current = null
+        setLiveLoopBusy(false)
+      }
+    })()
+  }, [entries, liveLoopBusy])
 
   const pauseReady = useRef(false)
   useEffect(() => {
@@ -309,7 +425,8 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
       stats: [
         recapCount('Clips shown', clipStats.current.shown),
         recapCount('Unique videos', clipStats.current.unique.size),
-        recapCount('Videos in queue', entries.length)
+        recapCount('Videos in queue', entries.length),
+        ...(liveLocks.current > 0 ? [recapCount('Live loops', liveLocks.current)] : [])
       ]
     })
   }, [onExit, copy.hypnoStation, lab.elapsedSeconds, entries.length])
@@ -342,6 +459,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
       else if (key === '2') setSpeed('flash')
       else if (key === '3') setSpeed('strobe')
       else if (key === 'b') setRumble((on) => !on)
+      else if (key === 'h') void toggleLiveLoop()
       else if (key === 'e') setEffectsPanelOpen((open) => !open)
       else if (key === 'arrowup') setVolume((v) => Math.min(1, v + 0.05))
       else if (key === 'arrowdown') setVolume((v) => Math.max(0, v - 0.05))
@@ -352,7 +470,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [end, revealControls])
+  }, [end, revealControls, toggleLiveLoop])
 
   const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2
 
@@ -363,8 +481,16 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
       onClick={() => setPaused((p) => !p)}
     >
       <div className="queue-stage hypno-stage" ref={stageRef}>
-        <video ref={aRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" loop />
-        <video ref={bRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" loop />
+        <video ref={aRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" />
+        <video ref={bRef} className="queue-video hypno-video" crossOrigin="anonymous" playsInline preload="auto" />
+        <video
+          ref={probeRef}
+          className="hypno-probe"
+          crossOrigin="anonymous"
+          muted
+          playsInline
+          preload="auto"
+        />
         <div className="hypno-hue" />
         {anyEffectActive(effects) && <EffectsOverlay settings={effects} hideTint />}
         <div className="hypno-vignette" />
@@ -387,6 +513,7 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
           </span>
           <span className="scroller-count">
             {copy.hypnoStation} · {entries.length} clips · {cuts} cuts
+            {liveLoop ? ' · live loop' : liveLoopBusy ? ' · finding loop' : liveLoopHint ? ` · ${liveLoopHint}` : ''}
           </span>
         </div>
 
@@ -397,6 +524,25 @@ export function HypnoPlayer({ entries, settings, launch, onExit }: HypnoPlayerPr
         </button>
         <button className="scroller-btn pixel-toggle" onClick={() => skipRef.current()} title="Next snippet (→)">
           Cut
+        </button>
+        <button
+          className={`scroller-btn ${liveLoop || liveLoopBusy ? 'active' : ''}`}
+          onClick={() => void toggleLiveLoop()}
+          title={
+            liveLoopBusy
+              ? 'Finding a seamless loop… (H to cancel)'
+              : liveLoop
+                ? 'Live loop on — cuts stay on this clip (H)'
+                : liveLoopHint
+                  ? `${liveLoopHint} — try again (H)`
+                  : 'Lock this clip to a seamless loop (H)'
+          }
+        >
+          {liveLoopBusy ? (
+            <Loader2 size={16} className="spin" />
+          ) : (
+            <Heart size={16} fill={liveLoop ? 'currentColor' : 'none'} />
+          )}
         </button>
         <button
           className={`scroller-btn pixel-toggle ${rumble ? 'active' : ''}`}

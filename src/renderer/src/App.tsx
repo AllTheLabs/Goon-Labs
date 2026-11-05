@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import {
   CheckSquare,
@@ -28,7 +28,8 @@ import type {
   LibraryShelf,
   LibraryState,
   LibraryViewStats,
-  MediaItem
+  MediaItem,
+  ThumbReadyEvent
 } from '../../shared/types'
 import { DetailsPanel } from './components/DetailsPanel'
 import { LibraryShelf as Shelf, MediaGrid } from './components/MediaGrid'
@@ -40,12 +41,12 @@ import type { HypnoSettings } from './components/HypnoSetup'
 import { StillPlayer } from './components/StillPlayer'
 import { StillSetup } from './components/StillSetup'
 import type { StillSettings } from './components/StillSetup'
-import { PixelPlayer } from './components/PixelPlayer'
 import { PixelSetup } from './components/PixelSetup'
 import type { PixelSettings } from './components/PixelSetup'
 import { QueuePlayer } from './components/QueuePlayer'
 import { QueueSetup } from './components/QueueSetup'
 import type { QueueEntry, QueueSettings } from './components/QueueSetup'
+import { GoonDicePrompt } from './components/GoonDicePrompt'
 import { Settings } from './components/Settings'
 import { Sidebar } from './components/Sidebar'
 import type { TypeFilter } from './components/Sidebar'
@@ -73,9 +74,15 @@ import { Viewer } from './components/Viewer'
 import { Welcome } from './components/Welcome'
 import { useAppUpdate } from './appUpdate'
 import { useDiscordPresence } from './discordPresence'
+import { loadGoonDiceSettings, rollFeelingLucky, saveGoonDiceSettings } from './goonDice'
 import { plural } from './utils'
 
 type SortKey = 'newest' | 'oldest' | 'name' | 'size'
+
+const EMPTY_SELECTED = new Set<string>()
+const PixelPlayer = lazy(() =>
+  import('./components/PixelPlayer').then((mod) => ({ default: mod.PixelPlayer }))
+)
 
 const SORTERS: Record<SortKey, (a: MediaItem, b: MediaItem) => number> = {
   newest: (a, b) => b.importedAt.localeCompare(a.importedAt),
@@ -110,8 +117,10 @@ export function App() {
   const [busy, setBusy] = useState<string | null>(null)
 
   const [query, setQuery] = useState('')
+  const [queryInput, setQueryInput] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [untaggedView, setUntaggedView] = useState(false)
+  const [sessionsView, setSessionsView] = useState(false)
   const [activeTags, setActiveTags] = useState<string[]>([])
   const [sort, setSort] = useState<SortKey>('newest')
   const [thumbSize, setThumbSize] = useState(200)
@@ -144,6 +153,7 @@ export function App() {
   const [themesOpen, setThemesOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [urlImportOpen, setUrlImportOpen] = useState(false)
+  const [dicePrompt, setDicePrompt] = useState<null | 'first' | 'settings'>(null)
   const [downloads, setDownloads] = useState<DownloadJob[]>([])
   const { copy } = useTheme()
 
@@ -153,8 +163,13 @@ export function App() {
   const [recap, setRecap] = useState<LabRecapData | null>(null)
   const dragDepth = useRef(0)
   const toastId = useRef(0)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const thumbFlush = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const thumbBatch = useRef<ThumbReadyEvent[]>([])
 
   const items = library?.items ?? []
+  const sessions = library?.sessions ?? []
+  const catalog = sessionsView ? sessions : items
 
   const notify = useCallback((kind: ToastKind, title: string, detail?: string) => {
     const id = ++toastId.current
@@ -177,6 +192,11 @@ export function App() {
       .finally(() => setLoading(false))
   }, [notify])
 
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(queryInput), 120)
+    return () => clearTimeout(t)
+  }, [queryInput])
+
   useEffect(
     () =>
       window.api.onPreviewReady(({ id, remaining }) =>
@@ -191,6 +211,46 @@ export function App() {
       ),
     []
   )
+
+  useEffect(() => window.api.onLibrarySynced(setLibrary), [])
+
+  useEffect(() => {
+    const flush = () => {
+      thumbFlush.current = null
+      const batch = thumbBatch.current
+      thumbBatch.current = []
+      if (batch.length === 0) return
+      setLibrary((lib) => {
+        if (!lib) return lib
+        const thumbs = new Set(lib.thumbIds)
+        const patches = new Map<string, ThumbReadyEvent>()
+        let remaining = lib.thumbsPending
+        for (const event of batch) {
+          remaining = event.remaining
+          if (!event.id) continue
+          thumbs.add(event.id)
+          patches.set(event.id, event)
+        }
+        const applyPatch = (item: MediaItem) => {
+          const patch = patches.get(item.id)
+          if (!patch) return item
+          const duration = patch.duration ?? item.duration
+          const width = patch.width ?? item.width
+          const height = patch.height ?? item.height
+          if (duration === item.duration && width === item.width && height === item.height) return item
+          return { ...item, duration, width, height }
+        }
+        const items = patches.size === 0 ? lib.items : lib.items.map(applyPatch)
+        const sessions = patches.size === 0 ? lib.sessions : (lib.sessions ?? []).map(applyPatch)
+        return { ...lib, items, sessions, thumbIds: [...thumbs], thumbsPending: remaining }
+      })
+    }
+    return window.api.onThumbReady((event) => {
+      thumbBatch.current.push(event)
+      if (thumbFlush.current) return
+      thumbFlush.current = setTimeout(flush, 80)
+    })
+  }, [])
   // Downloads are tracked here (not in the dialog) so they keep updating when it's closed.
   const urlImportOpenRef = useRef(urlImportOpen)
   urlImportOpenRef.current = urlImportOpen
@@ -222,6 +282,7 @@ export function App() {
   ).length
 
   const previewIds = useMemo(() => new Set(library?.previewIds ?? []), [library?.previewIds])
+  const thumbIdSet = useMemo(() => new Set(library?.thumbIds ?? []), [library?.thumbIds])
 
   const counts = useMemo(
     () => ({
@@ -234,43 +295,44 @@ export function App() {
 
   const tagCounts = useMemo(() => {
     const map = new Map<string, number>()
-    for (const item of items) for (const tag of item.tags) map.set(tag, (map.get(tag) ?? 0) + 1)
+    for (const item of catalog) for (const tag of item.tags) map.set(tag, (map.get(tag) ?? 0) + 1)
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
-  }, [items])
+  }, [catalog])
   const allTags = useMemo(() => tagCounts.map(([tag]) => tag), [tagCounts])
   const untaggedCount = useMemo(() => items.filter((item) => item.tags.length === 0).length, [items])
 
   const visible = useMemo(() => {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
-    return items
+    return catalog
       .filter((item) => {
         if (untaggedView) {
           // Keep the current selection on screen after tagging so more tags can be added.
           return item.tags.length === 0 || selected.has(item.id)
         }
+        if (sessionsView) return true
         return typeFilter === 'all' || item.type === typeFilter
       })
       .filter((item) => untaggedView || activeTags.every((tag) => item.tags.includes(tag)))
       .filter((item) => matchesQuery(item, terms))
       .sort(SORTERS[sort])
-  }, [items, query, typeFilter, activeTags, sort, untaggedView, selected])
+  }, [catalog, query, typeFilter, activeTags, sort, sessionsView, untaggedView, untaggedView ? selected : EMPTY_SELECTED])
 
   const pinnedIdSet = useMemo(() => new Set(library?.pinnedIds ?? []), [library?.pinnedIds])
   const visibleIds = useMemo(() => new Set(visible.map((item) => item.id)), [visible])
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
 
   const pinnedItems = useMemo(() => {
-    if (untaggedView) return []
+    if (untaggedView || sessionsView) return []
     const next: MediaItem[] = []
     for (const id of library?.pinnedIds ?? []) {
       const item = itemsById.get(id)
       if (item && visibleIds.has(id)) next.push(item)
     }
     return next
-  }, [library?.pinnedIds, itemsById, visibleIds, untaggedView])
+  }, [library?.pinnedIds, itemsById, visibleIds, untaggedView, sessionsView])
 
   const frequentItems = useMemo(() => {
-    if (untaggedView) return []
+    if (untaggedView || sessionsView) return []
     const eligible = new Set(
       [...visibleIds].filter((id) => !pinnedIdSet.has(id))
     )
@@ -280,7 +342,7 @@ export function App() {
       if (item) next.push(item)
     }
     return next
-  }, [untaggedView, visibleIds, pinnedIdSet, library?.views, itemsById])
+  }, [untaggedView, sessionsView, visibleIds, pinnedIdSet, library?.views, itemsById])
 
   const shelfIds = useMemo(
     () => new Set([...pinnedItems, ...frequentItems].map((item) => item.id)),
@@ -288,8 +350,9 @@ export function App() {
   )
 
   const gridItems = useMemo(
-    () => (untaggedView ? visible : visible.filter((item) => !shelfIds.has(item.id))),
-    [untaggedView, visible, shelfIds]
+    () =>
+      untaggedView || sessionsView ? visible : visible.filter((item) => !shelfIds.has(item.id)),
+    [untaggedView, sessionsView, visible, shelfIds]
   )
 
   const applyShelf = useCallback((shelf: LibraryShelf) => {
@@ -305,6 +368,20 @@ export function App() {
       }
     },
     [applyShelf, notify]
+  )
+
+  const pinOne = useCallback(
+    (id: string) => {
+      void togglePins([id])
+    },
+    [togglePins]
+  )
+
+  const pinMany = useCallback(
+    (ids: string[]) => {
+      void togglePins(ids)
+    },
+    [togglePins]
   )
 
   useEffect(() => {
@@ -331,7 +408,23 @@ export function App() {
 
   const mergeItems = useCallback((updated: MediaItem[]) => {
     const byId = new Map(updated.map((item) => [item.id, item]))
-    setLibrary((lib) => lib && { ...lib, items: lib.items.map((i) => byId.get(i.id) ?? i) })
+    setLibrary(
+      (lib) =>
+        lib && {
+          ...lib,
+          items: lib.items.map((i) => byId.get(i.id) ?? i),
+          sessions: (lib.sessions ?? []).map((i) => byId.get(i.id) ?? i)
+        }
+    )
+  }, [])
+
+  const appendItem = useCallback((item: MediaItem) => {
+    const session = item.relPath.replace(/\\/g, '/').startsWith('sessions/')
+    setLibrary((lib) => {
+      if (!lib) return lib
+      if (session) return { ...lib, sessions: [...(lib.sessions ?? []), item] }
+      return { ...lib, items: [...lib.items, item] }
+    })
   }, [])
 
   const chooseRepository = async () => {
@@ -342,6 +435,7 @@ export function App() {
       setSelected(new Set())
       setActiveTags([])
       setUntaggedView(false)
+      setSessionsView(false)
       setActiveId(null)
       notify('success', 'Repository ready', `Using ${next.root}`)
     } catch (err) {
@@ -443,7 +537,9 @@ export function App() {
             lib && {
               ...lib,
               items: lib.items.filter((item) => !gone.has(item.id)),
+              sessions: (lib.sessions ?? []).filter((item) => !gone.has(item.id)),
               previewIds: lib.previewIds.filter((id) => !gone.has(id)),
+              thumbIds: (lib.thumbIds ?? []).filter((id) => !gone.has(id)),
               pinnedIds: (lib.pinnedIds ?? []).filter((id) => !gone.has(id)),
               views: Object.fromEntries(
                 Object.entries(lib.views ?? {}).filter(([id]) => !gone.has(id))
@@ -554,20 +650,47 @@ export function App() {
   const closeGoonLoop = useCallback(() => setGoonLoop(null), [])
   const closeDilation = useCallback(() => setDilation(null), [])
   const closeGif = useCallback(() => setGifMaker(null), [])
+
+  const startFeelingLucky = useCallback(
+    (experimental: boolean) => {
+      const result = rollFeelingLucky(items, experimental)
+      if ('error' in result) {
+        notify('error', "I'm feeling lucky", result.error)
+        return
+      }
+      setViewerId(null)
+      setTrimmer(null)
+      setSplicer(null)
+      setGoonLoop(null)
+      setDilation(null)
+      setGifMaker(null)
+      setScroller(null)
+      setQueue(null)
+      setPixel(null)
+      setHypno(null)
+      setStill(null)
+      if (result.lab === 'scroller') setScroller({ videos: result.videos, tags: result.tags, launch: result.launch })
+      else if (result.lab === 'queue') setQueue({ entries: result.entries, settings: result.settings, launch: result.launch })
+      else if (result.lab === 'pixel') setPixel({ entries: result.entries, settings: result.settings, launch: result.launch })
+      else if (result.lab === 'hypno') setHypno({ entries: result.entries, settings: result.settings, launch: result.launch })
+      else setStill({ photos: result.photos, tags: result.tags, settings: result.settings, launch: result.launch })
+    },
+    [items, notify]
+  )
   const finishTrim = useCallback(
     (item: MediaItem, replaced: boolean) => {
       if (replaced) {
         mergeItems([item])
         notify('success', 'Video trimmed', item.fileName)
       } else {
-        setLibrary((lib) => lib && { ...lib, items: [...lib.items, item] })
+        appendItem(item)
         notify('success', 'Trimmed copy saved', item.fileName)
       }
       setSelected(new Set([item.id]))
       setActiveId(item.id)
       setTrimmer(null)
     },
-    [mergeItems, notify]
+    [appendItem, mergeItems, notify]
   )
   const finishSplice = useCallback(
     (item: MediaItem, replaced: boolean) => {
@@ -575,14 +698,14 @@ export function App() {
         mergeItems([item])
         notify('success', 'Video spliced', item.fileName)
       } else {
-        setLibrary((lib) => lib && { ...lib, items: [...lib.items, item] })
+        appendItem(item)
         notify('success', 'Spliced copy saved', item.fileName)
       }
       setSelected(new Set([item.id]))
       setActiveId(item.id)
       setSplicer(null)
     },
-    [mergeItems, notify]
+    [appendItem, mergeItems, notify]
   )
   const finishGoonLoop = useCallback(
     (item: MediaItem, replaced: boolean) => {
@@ -591,21 +714,21 @@ export function App() {
           mergeItems([item])
           notify('success', 'Saved as GIF', item.fileName)
         } else {
-          setLibrary((lib) => lib && { ...lib, items: [...lib.items, item] })
+          appendItem(item)
           notify('success', 'Looping GIF saved', item.fileName)
         }
       } else if (replaced) {
         mergeItems([item])
         notify('success', 'Goon Loop saved', item.fileName)
       } else {
-        setLibrary((lib) => lib && { ...lib, items: [...lib.items, item] })
+        appendItem(item)
         notify('success', 'Goon Loop copy saved', item.fileName)
       }
       setSelected(new Set([item.id]))
       setActiveId(item.id)
       setGoonLoop(null)
     },
-    [mergeItems, notify]
+    [appendItem, mergeItems, notify]
   )
   const finishDilation = useCallback(
     (item: MediaItem, replaced: boolean) => {
@@ -613,14 +736,14 @@ export function App() {
         mergeItems([item])
         notify('success', 'Video time-dilated', item.fileName)
       } else {
-        setLibrary((lib) => lib && { ...lib, items: [...lib.items, item] })
+        appendItem(item)
         notify('success', 'Time-dilated copy saved', item.fileName)
       }
       setSelected(new Set([item.id]))
       setActiveId(item.id)
       setDilation(null)
     },
-    [mergeItems, notify]
+    [appendItem, mergeItems, notify]
   )
   const finishGif = useCallback(
     (item: MediaItem, replaced: boolean) => {
@@ -628,19 +751,20 @@ export function App() {
         mergeItems([item])
         notify('success', 'Saved as GIF', item.fileName)
       } else {
-        setLibrary((lib) => lib && { ...lib, items: [...lib.items, item] })
+        appendItem(item)
         notify('success', 'GIF saved', item.fileName)
       }
       setSelected(new Set([item.id]))
       setActiveId(item.id)
       setGifMaker(null)
     },
-    [mergeItems, notify]
+    [appendItem, mergeItems, notify]
   )
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (viewerId || scroller || queue || pixel || hypno || still || trimmer || splicer || goonLoop || dilation || gifMaker || themesOpen || settingsOpen || urlImportOpen || recap || isTypingTarget(e.target)) return
+      if (viewerId || scroller || queue || pixel || hypno || still || trimmer || splicer || goonLoop || dilation || gifMaker || themesOpen || settingsOpen || urlImportOpen || recap || dicePrompt || isTypingTarget(e.target)) return
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+        if (sessionsView) return
         e.preventDefault()
         setUrlImportOpen(true)
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
@@ -650,7 +774,7 @@ export function App() {
         clearSelection()
       } else if (e.key === 'Enter' && activeId && selected.has(activeId)) {
         setViewerId(activeId)
-      } else if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      } else if (!sessionsView && (e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const ids = selected.size > 0 ? [...selected] : activeId ? [activeId] : []
         if (ids.length > 0) void togglePins(ids)
       } else if (e.key === 'Delete' && selected.size > 0) {
@@ -676,6 +800,8 @@ export function App() {
     settingsOpen,
     urlImportOpen,
     recap,
+    dicePrompt,
+    sessionsView,
     activeId,
     selected,
     selectAll,
@@ -776,7 +902,8 @@ export function App() {
   }
 
   const viewerIndex = viewerId ? visible.findIndex((i) => i.id === viewerId) : -1
-  const filtersActive = query !== '' || activeTags.length > 0 || typeFilter !== 'all' || untaggedView
+  const filtersActive =
+    query !== '' || activeTags.length > 0 || (!sessionsView && typeFilter !== 'all') || untaggedView
   const untaggedCaughtUp = untaggedView && untaggedCount === 0 && query === '' && visible.length === 0
 
   return (
@@ -787,11 +914,19 @@ export function App() {
         onTypeFilter={(filter) => {
           setTypeFilter(filter)
           setUntaggedView(false)
+          setSessionsView(false)
         }}
         untaggedCount={untaggedCount}
         untaggedView={untaggedView}
+        onFeelingLucky={() => {
+          const settings = loadGoonDiceSettings()
+          if (!settings.asked) setDicePrompt('first')
+          else startFeelingLucky(settings.experimental)
+        }}
+        onFeelingLuckySettings={() => setDicePrompt('settings')}
         onUntaggedView={() => {
           setUntaggedView(true)
+          setSessionsView(false)
           setActiveTags([])
           setSelected((current) => {
             const keep = [...current].filter((id) => {
@@ -808,6 +943,15 @@ export function App() {
           setActiveTags((current) =>
             current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag]
           )
+        }}
+        sessionsView={sessionsView}
+        sessionCount={sessions.length}
+        onOpenSessions={() => {
+          setSessionsView(true)
+          setUntaggedView(false)
+          setActiveTags([])
+          setSelected(new Set())
+          setActiveId(null)
         }}
         onClearTags={() => setActiveTags([])}
         root={library.root}
@@ -880,12 +1024,12 @@ export function App() {
             <input
               className="input search-input"
               placeholder={copy.searchPlaceholder}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
+              value={queryInput}
+              onChange={(e) => setQueryInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && setQueryInput('')}
             />
-            {query && (
-              <button className="search-clear" onClick={() => setQuery('')} aria-label="Clear search">
+            {queryInput && (
+              <button className="search-clear" onClick={() => setQueryInput('')} aria-label="Clear search">
                 <X size={14} />
               </button>
             )}
@@ -914,20 +1058,24 @@ export function App() {
           <button className="btn btn-ghost btn-icon" onClick={refresh} title="Rescan repository folders">
             <RefreshCw size={16} />
           </button>
-          <button
-            className="btn btn-secondary url-import-btn"
-            onClick={() => setUrlImportOpen(true)}
-            title="Download photos and videos from links (Ctrl+V)"
-          >
-            <Link size={16} /> <span className="btn-label">Import URL</span>
-            {activeDownloads > 0 && <span className="btn-badge">{activeDownloads}</span>}
-          </button>
-          <button className="btn btn-secondary" onClick={() => runImport(() => window.api.importWithDialog('folder'))}>
-            <FolderInput size={16} /> Import folder
-          </button>
-          <button className="btn btn-primary" onClick={() => runImport(() => window.api.importWithDialog('files'))}>
-            <ImagePlus size={16} /> Import files
-          </button>
+          {!sessionsView && (
+            <>
+              <button
+                className="btn btn-secondary url-import-btn"
+                onClick={() => setUrlImportOpen(true)}
+                title="Download photos and videos from links (Ctrl+V)"
+              >
+                <Link size={16} /> <span className="btn-label">Import URL</span>
+                {activeDownloads > 0 && <span className="btn-badge">{activeDownloads}</span>}
+              </button>
+              <button className="btn btn-secondary" onClick={() => runImport(() => window.api.importWithDialog('folder'))}>
+                <FolderInput size={16} /> Import folder
+              </button>
+              <button className="btn btn-primary" onClick={() => runImport(() => window.api.importWithDialog('files'))}>
+                <ImagePlus size={16} /> Import files
+              </button>
+            </>
+          )}
         </header>
 
         <div className={`selection-bar ${selectedItems.length > 0 ? 'open' : ''}`}>
@@ -958,10 +1106,12 @@ export function App() {
               </button>
             </>
           )}
-          <button className="btn btn-secondary btn-sm" onClick={() => togglePins(selectedItems.map((item) => item.id))}>
-            <Pin size={14} />
-            {selectedItems.every((item) => pinnedIdSet.has(item.id)) ? 'Unpin' : 'Pin'}
-          </button>
+          {!sessionsView && (
+            <button className="btn btn-secondary btn-sm" onClick={() => togglePins(selectedItems.map((item) => item.id))}>
+              <Pin size={14} />
+              {selectedItems.every((item) => pinnedIdSet.has(item.id)) ? 'Unpin' : 'Pin'}
+            </button>
+          )}
           <button className="btn btn-primary btn-sm" onClick={exportSelected}>
             <Download size={14} /> Export selected
           </button>
@@ -970,8 +1120,20 @@ export function App() {
           </button>
         </div>
 
-        <div className="content" onClick={(e) => e.target === e.currentTarget && clearSelection()}>
-          {items.length === 0 ? (
+        <div
+          ref={contentRef}
+          className="content"
+          onClick={(e) => e.target === e.currentTarget && clearSelection()}
+        >
+          {sessionsView && sessions.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">
+                <Upload size={30} />
+              </div>
+              <h2>No sessions yet</h2>
+              <p>Record a lab with R and it will show up here. Files save to the sessions folder in this repository.</p>
+            </div>
+          ) : !sessionsView && items.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">
                 <Upload size={30} />
@@ -1003,6 +1165,7 @@ export function App() {
                   className="btn btn-secondary"
                   onClick={() => {
                     setQuery('')
+                    setQueryInput('')
                     setActiveTags([])
                     setTypeFilter('all')
                     setUntaggedView(false)
@@ -1014,7 +1177,7 @@ export function App() {
             </div>
           ) : (
             <div className="library-feed">
-              {!untaggedView && (
+              {!untaggedView && !sessionsView && (
                 <>
                   <Shelf
                     title={copy.pinned}
@@ -1022,9 +1185,11 @@ export function App() {
                     selected={selected}
                     activeId={activeId}
                     pinned={pinnedIdSet}
+                    thumbIds={thumbIdSet}
+                    thumbSize={thumbSize}
                     onItemClick={handleItemClick}
                     onToggleCheck={toggleCheck}
-                    onTogglePin={(id) => void togglePins([id])}
+                    onTogglePin={pinOne}
                     onOpen={setViewerId}
                   />
                   <Shelf
@@ -1033,9 +1198,11 @@ export function App() {
                     selected={selected}
                     activeId={activeId}
                     pinned={pinnedIdSet}
+                    thumbIds={thumbIdSet}
+                    thumbSize={thumbSize}
                     onItemClick={handleItemClick}
                     onToggleCheck={toggleCheck}
-                    onTogglePin={(id) => void togglePins([id])}
+                    onTogglePin={pinOne}
                     onOpen={setViewerId}
                   />
                   {gridItems.length > 0 && (pinnedItems.length > 0 || frequentItems.length > 0) && (
@@ -1049,9 +1216,14 @@ export function App() {
                   selected={selected}
                   activeId={activeId}
                   pinned={pinnedIdSet}
+                  thumbIds={thumbIdSet}
+                  thumbSize={thumbSize}
+                  scrollRef={contentRef}
+                  virtualize
+                  showPin={!sessionsView}
                   onItemClick={handleItemClick}
                   onToggleCheck={toggleCheck}
-                  onTogglePin={(id) => void togglePins([id])}
+                  onTogglePin={pinOne}
                   onOpen={setViewerId}
                 />
               )}
@@ -1069,7 +1241,9 @@ export function App() {
         onAddTags={addTags}
         onRemoveTag={removeTag}
         pinnedIds={pinnedIdSet}
-        onTogglePin={(ids) => void togglePins(ids)}
+        showPin={!sessionsView}
+        thumbIds={thumbIdSet}
+        onTogglePin={pinMany}
         onOpenViewer={setViewerId}
         onOpenTrimmer={(item) => setTrimmer(item)}
         onOpenSplicer={(item) => setSplicer(item)}
@@ -1089,7 +1263,8 @@ export function App() {
           onClose={closeViewer}
           onDelete={(id) => deleteItems([id])}
           pinned={Boolean(viewerId && pinnedIdSet.has(viewerId))}
-          onTogglePin={(id) => void togglePins([id])}
+          showPin={!sessionsView}
+          onTogglePin={pinOne}
         />
       )}
 
@@ -1137,12 +1312,14 @@ export function App() {
         />
       )}
       {pixel && pixel !== 'setup' && (
-        <PixelPlayer
-          entries={pixel.entries}
-          settings={pixel.settings}
-          launch={pixel.launch}
-          onExit={endLab}
-        />
+        <Suspense fallback={null}>
+          <PixelPlayer
+            entries={pixel.entries}
+            settings={pixel.settings}
+            launch={pixel.launch}
+            onExit={endLab}
+          />
+        </Suspense>
       )}
 
       {hypno === 'setup' && (
@@ -1184,6 +1361,7 @@ export function App() {
         <TrimmerSetup
           videos={items.filter((item) => item.type === 'video')}
           initialId={selectedItems.length === 1 && selectedItems[0].type === 'video' ? selectedItems[0].id : null}
+          thumbIds={thumbIdSet}
           onPick={setTrimmer}
           onClose={closeTrimmer}
         />
@@ -1201,6 +1379,7 @@ export function App() {
         <SplicerSetup
           videos={items.filter((item) => item.type === 'video')}
           initialId={selectedItems.length === 1 && selectedItems[0].type === 'video' ? selectedItems[0].id : null}
+          thumbIds={thumbIdSet}
           onPick={setSplicer}
           onClose={closeSplicer}
         />
@@ -1218,6 +1397,7 @@ export function App() {
         <GoonLoopSetup
           videos={items.filter((item) => item.type === 'video')}
           initialId={selectedItems.length === 1 && selectedItems[0].type === 'video' ? selectedItems[0].id : null}
+          thumbIds={thumbIdSet}
           onPick={setGoonLoop}
           onClose={closeGoonLoop}
         />
@@ -1235,6 +1415,7 @@ export function App() {
         <TimeDilationSetup
           videos={items.filter((item) => item.type === 'video')}
           initialId={selectedItems.length === 1 && selectedItems[0].type === 'video' ? selectedItems[0].id : null}
+          thumbIds={thumbIdSet}
           onPick={setDilation}
           onClose={closeDilation}
         />
@@ -1252,6 +1433,7 @@ export function App() {
         <GifSetup
           videos={items.filter((item) => item.type === 'video')}
           initialId={selectedItems.length === 1 && selectedItems[0].type === 'video' ? selectedItems[0].id : null}
+          thumbIds={thumbIdSet}
           onPick={setGifMaker}
           onClose={closeGif}
         />
@@ -1275,6 +1457,23 @@ export function App() {
 
       {themesOpen && <ThemePicker onClose={() => setThemesOpen(false)} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      {dicePrompt && (
+        <GoonDicePrompt
+          key={dicePrompt}
+          settings={loadGoonDiceSettings()}
+          fromSettings={dicePrompt === 'settings'}
+          onClose={() => setDicePrompt(null)}
+          onSave={(settings) => {
+            saveGoonDiceSettings(settings)
+            setDicePrompt(null)
+          }}
+          onRoll={(settings) => {
+            saveGoonDiceSettings(settings)
+            setDicePrompt(null)
+            startFeelingLucky(settings.experimental)
+          }}
+        />
+      )}
       {recap && <LabRecap recap={recap} onClose={() => setRecap(null)} />}
 
       {dragging && (

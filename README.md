@@ -28,6 +28,7 @@ The window opens **maximized**. Pick a **repository** folder. That folder is the
 | `Videos/` | Imported videos |
 | `.mediamanager/library.json` | Item ids, tags, and paths |
 | `.mediamanager/shelf.json` | Pins and library-viewer open counts |
+| `.mediamanager/thumbs/` | JPEG stills for the library grid |
 | `.mediamanager/previews/` | Small copies of videos for the Scroller |
 
 Change the repository later from the sidebar.
@@ -36,27 +37,32 @@ Change the repository later from the sidebar.
 
 The main window is a grid of everything in the repository. Search names and tags, filter by type or tag, and sort by newest, oldest, name, or size.
 
-- **Import files** or **Import folder**, or drop files onto the window. Photos go to `Pictures`, videos to `Videos`. Names that already exist get ` (1)`, ` (2)`, and so on.
+- **Import files** or **Import folder**, or drop files onto the window. Photos go to `Pictures`, videos to `Videos`. Lab recordings go to `sessions`. Names that already exist get ` (1)`, ` (2)`, and so on.
 - **Import URL** (or Ctrl+V) downloads the media and adds it to the library. That covers direct file links, most video sites via yt-dlp, and X/Twitter posts (video is preferred over stills).
 - Click an item to select it. Ctrl/Shift-click for several. The right-hand panel shows a preview, tags, size, and actions.
 - **Pin** (card, details, viewer, or **P**) keeps items at the top of the grid. Under that, **Frequently gooned to** lists clips you open often in the library viewer (three or more times). Labs do not count. Both shelves hide while you work through **Untagged**.
+- **I'm feeling lucky** (Library in the sidebar) rolls a random lab with random compatible media. The first click asks whether experimental labs (Pixel Perfection, Still Station) can come up; tick **Remember my option** to skip that prompt next time. The gear beside it brings the prompt back.
 - Tags are lowercase. Filter the grid from the sidebar, or use **Untagged** to work through files that have none yet.
 - **Enter** opens the viewer, **Delete** moves files to the Recycle Bin, **Export** copies the selection somewhere else.
 - With one video selected, **Trim**, **Splice**, **Loop**, **Dilate**, and **GIF** on the selection bar (and in the details panel) open those utilities directly.
 
-The gear in the sidebar opens **Settings**: default folder for lab recordings, whether labs should start recording / webcam on, **Discord Rich Presence** (off by default), a **Software window rendering** toggle (CPU draws the window; ffmpeg jobs such as Time Dilation still use the GPU), and a keybind guide. That display toggle needs a restart.
+The gear in the sidebar opens **Settings**: whether labs should start recording / webcam on, **Discord Rich Presence** (off by default), a **Software window rendering** toggle (CPU draws the window; ffmpeg jobs such as Time Dilation still use the GPU), and a keybind guide. That display toggle needs a restart.
 
-On first launch you can also turn Discord Rich Presence on from the welcome screen. When it is on and the Discord desktop app is running, friends see **Playing AllTheLabs**, whether you are idle or browsing media, which lab you are in, and how long that lab session has lasted. Labs show as **In Goon Session -** plus the lab name. A button links to the GitHub releases page. Library contents are not sent.
+The sidebar shows a **Goon Streak**: consecutive local days you have opened the app. Miss a day and it resets to 1.
+
+On first launch you can also turn Discord Rich Presence on from the welcome screen. When it is on and the Discord desktop app is running, friends see **Playing Goon Labs**, your goon streak, whether you are idle or browsing media, which lab you are in, and how long that lab session has lasted. Labs show as **In Goon Session -** plus the lab name. A button links to the GitHub releases page. Library contents are not sent.
 
 ## Labs
 
-Labs are full-screen players. They can show a webcam overlay (move and resize it from the control bar) and record the window to MP4.
+Labs are full-screen players. They can show a webcam overlay (move and resize it from the control bar) and record the window to MP4. Recordings save into a `sessions` folder in the repository as `Goon Labs - LAB NAME - Date`. They do not appear in the main library or in lab setups.
 
-**C** toggles the webcam, **R** starts or stops recording. You can also tick those on in the setup dialog, or set them as defaults in Settings.
+**Your Sessions → Goon Sessions** in the sidebar shows those recordings in the same grid as the library, including tags. **C** toggles the webcam, **R** starts or stops recording. You can also tick those on in the setup dialog, or set them as defaults in Settings.
 
 Each lab’s setup screen has a **Session time**. Leave it empty and the lab runs until the queue ends or you exit. Set a time and the session winds down: in the last 60 seconds a countdown island appears at the bottom, audio fades, and the lab closes when the clock hits zero. Session time is per visit, not a saved default.
 
 When a lab ends you get a **session recap**: time spent, plus lab-specific counts (tiles and unique videos in the Scroller, beats hit in Beat Bar, clips shown including repeats in Hypno Station, videos and detections in Pixel Perfection, photos shown in Still Station).
+
+Setup screens filter tags with **Any tag**, **Exclude tags**, or **All tags**. Exclude is the red option in the middle: clips with those tags stay out of the filtered list and the lab. Switching to **All tags** clears exclusions.
 
 ### Scroller
 
@@ -82,13 +88,17 @@ Detection is local and imperfect — boxes can miss, sit slightly off the target
 
 **Labs → Hypno Station**. Queue videos, then watch random snippets cut together on a loop until you exit. Each cut pulses. Audio runs through a wet reverb. A colour wash drifts from pink through magenta and purple over the picture. A dry **melodic rumble** (on by default) plays a dark synth arpeggio in time with the cuts, with the bass kick as the last note of each phrase, and stays out of the reverb — toggle it in setup or with **B** in the lab. Overlay effects from the Scroller are here too (**E**); the pink spiral starts on.
 
-Cut speed is **Linger**, **Flash**, or **Strobe** (1 / 2 / 3 in the lab). The melody follows that speed. **→** jumps to the next snippet.
+Cut speed is **Linger**, **Flash**, or **Strobe** (1 / 2 / 3 in the lab). The melody follows that speed. **→** jumps to the next snippet. The heart in the control bar (**H**) locks the current clip to a seamless loop (same matcher as Goon Loop). Cuts, pulses, and the reverb phrase keep going on that loop; **H** again unlocks.
 
 ### Still Station (experimental)
 
 **Labs → Still Station**. Pick tags (or use every photo) and watch them full-screen with a slow Ken Burns zoom and pan. Each still drifts, then crossfades to the next. Drift speed is **Linger**, **Drift**, or **Sweep** (1 / 2 / 3 in the lab). Endless desire loops the photos; turn it off to stop after one pass. **←** / **→** skip. The sidebar marks this lab **Experimental**.
 
-Recordings save to the folder you set in Settings (or Videos if that is unset). After you stop, Goon Labs encodes an H.264 MP4 so the file has a duration and can be seeked.
+After you stop recording, Goon Labs encodes an H.264 MP4 so the file has a duration and can be seeked.
+
+### Goon Sessions
+
+**Your Sessions → Goon Sessions**. Lab recordings from the `sessions` folder, in the same virtualized grid as the library (JPEG thumbs, tags, search, viewer). They are not in the main library and never show up in lab setups.
 
 ## Utilities
 
@@ -169,7 +179,7 @@ Full tables live in Settings. The ones you will hit most:
 
 ## Privacy
 
-Goon Labs is a local app. Media, tags, settings, and recordings stay in folders you choose on this machine. URL import talks to the sites you paste (and to yt-dlp’s GitHub releases when the downloader needs an update). Pixel Perfection downloads a local detector model on first use; video frames stay on this machine. On startup it checks GitHub Releases (`latest.yml`) for a newer installer; that only reads the public release list. After an update it also fetches those public release notes to show in the app. Discord Rich Presence, when you turn it on, talks only to the Discord desktop app on this machine so friends can see AllTheLabs is open — not your library. There is no analytics account and no Goon Labs server.
+Goon Labs is a local app. Media, tags, settings, and recordings stay in folders you choose on this machine. URL import talks to the sites you paste (and to yt-dlp’s GitHub releases when the downloader needs an update). Pixel Perfection downloads a local detector model on first use; video frames stay on this machine. On startup it checks GitHub Releases (`latest.yml`) for a newer installer; that only reads the public release list. After an update it also fetches those public release notes to show in the app. Discord Rich Presence, when you turn it on, talks only to the Discord desktop app on this machine so friends can see Goon Labs is open — not your library. There is no analytics account and no Goon Labs server.
 
 ## Running from source
 

@@ -1,4 +1,5 @@
-import { Film, FolderCog, Image, Images, Loader2, Palette, Settings, TagX, X } from 'lucide-react'
+import { Dices, Film, FolderCog, Image, Images, Loader2, Palette, Settings, TagX, X } from 'lucide-react'
+import { GoonStreak } from './GoonStreak'
 import type { MediaType } from '../../../shared/types'
 import { useTheme } from '../themes'
 import type { ThemeCopy } from '../themes'
@@ -12,6 +13,8 @@ interface SidebarProps {
   untaggedCount: number
   untaggedView: boolean
   onUntaggedView: () => void
+  onFeelingLucky: () => void
+  onFeelingLuckySettings: () => void
   tagCounts: [string, number][]
   activeTags: string[]
   onToggleTag: (tag: string) => void
@@ -28,6 +31,9 @@ interface SidebarProps {
   onOpenGoonLoop: () => void
   onOpenTimeDilation: () => void
   onOpenGif: () => void
+  sessionsView: boolean
+  sessionCount: number
+  onOpenSessions: () => void
   onOpenThemes: () => void
   onOpenSettings: () => void
   previewsPending: number
@@ -53,24 +59,28 @@ export function Sidebar(props: SidebarProps) {
     splicer: SplicerIcon,
     goonLoop: LoopIcon,
     timeDilation: DilationIcon,
-    goonImageFormat: GifIcon
+    goonImageFormat: GifIcon,
+    goonSessions: SessionsIcon
   } = icons
 
   return (
     <aside className="sidebar">
-      <div className="brand">
-        <div className="brand-logo">
-          <BrandIcon size={18} />
+      <div className="brand-block">
+        <div className="brand">
+          <div className="brand-logo">
+            <BrandIcon size={18} />
+          </div>
+          <span className="brand-name">{copy.appName}</span>
+          <div className="brand-actions">
+            <button className="btn btn-ghost btn-icon" onClick={props.onOpenSettings} title="Settings">
+              <Settings size={16} />
+            </button>
+            <button className="btn btn-ghost btn-icon" onClick={props.onOpenThemes} title="Theme">
+              <Palette size={16} />
+            </button>
+          </div>
         </div>
-        <span className="brand-name">{copy.appName}</span>
-        <div className="brand-actions">
-          <button className="btn btn-ghost btn-icon" onClick={props.onOpenSettings} title="Settings">
-            <Settings size={16} />
-          </button>
-          <button className="btn btn-ghost btn-icon" onClick={props.onOpenThemes} title="Theme">
-            <Palette size={16} />
-          </button>
-        </div>
+        <GoonStreak />
       </div>
 
       <nav className="sidebar-section">
@@ -78,7 +88,7 @@ export function Sidebar(props: SidebarProps) {
         {TYPE_ENTRIES.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
-            className={`nav-item ${props.typeFilter === key && !props.untaggedView ? 'active' : ''}`}
+            className={`nav-item ${props.typeFilter === key && !props.untaggedView && !props.sessionsView ? 'active' : ''}`}
             onClick={() => props.onTypeFilter(key)}
           >
             <Icon size={16} />
@@ -87,7 +97,7 @@ export function Sidebar(props: SidebarProps) {
           </button>
         ))}
         <button
-          className={`nav-item ${props.untaggedView ? 'active' : ''}`}
+          className={`nav-item ${props.untaggedView && !props.sessionsView ? 'active' : ''}`}
           onClick={props.onUntaggedView}
           title="Quickly tag media that doesn't have any tags yet"
         >
@@ -97,6 +107,24 @@ export function Sidebar(props: SidebarProps) {
             {props.untaggedCount}
           </span>
         </button>
+        <div className="nav-item-split">
+          <button
+            className="nav-item"
+            onClick={props.onFeelingLucky}
+            title="Roll a random lab with random media"
+          >
+            <Dices size={16} />
+            <span className="nav-label">{copy.feelingLucky}</span>
+          </button>
+          <button
+            className="nav-item-gear"
+            onClick={props.onFeelingLuckySettings}
+            title="I'm feeling lucky options"
+            aria-label="I'm feeling lucky options"
+          >
+            <Settings size={14} />
+          </button>
+        </div>
       </nav>
 
       <nav className="sidebar-section">
@@ -155,6 +183,19 @@ export function Sidebar(props: SidebarProps) {
         <button className="nav-item" onClick={props.onOpenGif} title="Goon Image Format (GIF)">
           <GifIcon size={16} />
           <span className="nav-label">{copy.goonImageFormat}</span>
+        </button>
+      </nav>
+
+      <nav className="sidebar-section">
+        <div className="sidebar-heading">{copy.sessionsHeading}</div>
+        <button
+          className={`nav-item ${props.sessionsView ? 'active' : ''}`}
+          onClick={props.onOpenSessions}
+          title="Lab recordings saved in this repository"
+        >
+          <SessionsIcon size={16} />
+          <span className="nav-label">{copy.goonSessions}</span>
+          <span className="nav-count">{props.sessionCount}</span>
         </button>
       </nav>
 

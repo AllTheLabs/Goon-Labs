@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, CameraOff, Circle, Square } from 'lucide-react'
 import type { LabPrefs } from '../labPrefs'
+import { getLabAudioCapture } from '../labAudioCapture'
 import { useTheme } from '../themes'
 
 export type CamCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
@@ -37,16 +38,36 @@ function pickMime(): string {
   return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? 'video/webm'
 }
 
+async function waitForLabAudio(): Promise<void> {
+  for (let i = 0; i < 24; i++) {
+    if (getLabAudioCapture()?.getAudioTracks().length) return
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  }
+}
+
+function mixLabAudio(stream: MediaStream): MediaStream {
+  const tap = getLabAudioCapture()
+  const tapTracks = tap?.getAudioTracks() ?? []
+  if (tapTracks.length === 0) return stream
+  for (const track of stream.getAudioTracks()) {
+    stream.removeTrack(track)
+    track.stop()
+  }
+  for (const track of tapTracks) stream.addTrack(track.clone())
+  return stream
+}
+
 async function captureWindow(): Promise<MediaStream> {
   try {
-    return await navigator.mediaDevices.getDisplayMedia({
+    const stream = await navigator.mediaDevices.getDisplayMedia({
       video: { frameRate: 30 },
       audio: true
     })
+    return mixLabAudio(stream)
   } catch {
     const id = await window.api.getWindowSourceId()
     if (!id) throw new Error('Could not capture this window')
-    return navigator.mediaDevices.getUserMedia({
+    const stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
         // Chromium desktop-capture constraints, not in the standard typings.
@@ -56,6 +77,7 @@ async function captureWindow(): Promise<MediaStream> {
         }
       } as unknown as MediaTrackConstraints
     })
+    return mixLabAudio(stream)
   }
 }
 
@@ -158,10 +180,15 @@ export function useLabSession(
       try {
         const filePath = await window.api.beginSessionRecording(labName, { prompt })
         if (!filePath) return
+        await waitForLabAudio()
         const stream = await captureWindow()
         captureStream.current = stream
         pendingWrites.current = []
-        const rec = new MediaRecorder(stream, { mimeType: pickMime(), videoBitsPerSecond: 8_000_000 })
+        const rec = new MediaRecorder(stream, {
+          mimeType: pickMime(),
+          videoBitsPerSecond: 8_000_000,
+          audioBitsPerSecond: 256_000
+        })
         rec.ondataavailable = (event) => {
           if (event.data.size === 0) return
           const write = event.data.arrayBuffer().then((buffer) => window.api.appendSessionChunk(buffer))

@@ -56,7 +56,8 @@ export function handleMediaProtocol(getLibrary: () => Library | null): void {
     const headers = {
       'Content-Type': mimeTypeOf(filePath),
       'Accept-Ranges': 'bytes',
-      'Access-Control-Allow-Origin': '*'
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=31536000, immutable'
     }
     const match = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get('range') ?? '')
     if (!match || (match[1] === '' && match[2] === '')) {

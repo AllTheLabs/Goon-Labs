@@ -1,21 +1,56 @@
-import { memo, useEffect, useRef, useState } from 'react'
-import type { MouseEvent } from 'react'
-import { Check, FileWarning, Pin, Play } from 'lucide-react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { MouseEvent, RefObject } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { Check, Pin } from 'lucide-react'
 import type { MediaItem } from '../../../shared/types'
-import { extensionOf, formatDuration, mediaUrl } from '../utils'
+import { DurationBadge, ItemThumb } from './ItemThumb'
+
+const GRID_GAP = 14
+const CARD_META = 46
+const OVERSCAN = 3
 
 interface MediaGridProps {
   items: MediaItem[]
   selected: Set<string>
   activeId: string | null
   pinned: Set<string>
+  thumbIds: Set<string>
+  thumbSize: number
+  scrollRef?: RefObject<HTMLDivElement | null>
+  virtualize?: boolean
+  showPin?: boolean
   onItemClick: (id: string, event: MouseEvent) => void
   onToggleCheck: (id: string) => void
   onTogglePin: (id: string) => void
   onOpen: (id: string) => void
 }
 
-export function MediaGrid({ items, selected, activeId, pinned, ...handlers }: MediaGridProps) {
+export const MediaGrid = memo(function MediaGrid({
+  items,
+  selected,
+  activeId,
+  pinned,
+  thumbIds,
+  thumbSize,
+  scrollRef,
+  virtualize = false,
+  ...handlers
+}: MediaGridProps) {
+  if (virtualize && scrollRef) {
+    return (
+      <VirtualMediaGrid
+        items={items}
+        selected={selected}
+        activeId={activeId}
+        pinned={pinned}
+        thumbIds={thumbIds}
+        thumbSize={thumbSize}
+        scrollRef={scrollRef}
+        {...handlers}
+      />
+    )
+  }
+
   return (
     <div className="media-grid">
       {items.map((item) => (
@@ -25,18 +60,20 @@ export function MediaGrid({ items, selected, activeId, pinned, ...handlers }: Me
           selected={selected.has(item.id)}
           active={item.id === activeId}
           pinned={pinned.has(item.id)}
+          thumbReady={thumbIds.has(item.id)}
+          showPin={handlers.showPin}
           {...handlers}
         />
       ))}
     </div>
   )
-}
+})
 
 export function LibraryShelf({
   title,
   items,
   ...rest
-}: { title: string } & MediaGridProps) {
+}: { title: string } & Omit<MediaGridProps, 'virtualize' | 'scrollRef'>) {
   if (items.length === 0) return null
   return (
     <section className="library-shelf">
@@ -49,11 +86,115 @@ export function LibraryShelf({
   )
 }
 
+function VirtualMediaGrid({
+  items,
+  selected,
+  activeId,
+  pinned,
+  thumbIds,
+  thumbSize,
+  scrollRef,
+  ...handlers
+}: MediaGridProps & { scrollRef: RefObject<HTMLDivElement | null> }) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(0)
+  const [scrollMargin, setScrollMargin] = useState(0)
+
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth))
+    ro.observe(el)
+    setWidth(el.clientWidth)
+    return () => ro.disconnect()
+  }, [])
+
+  const columns = Math.max(1, Math.floor((width + GRID_GAP) / (thumbSize + GRID_GAP)))
+  const cardWidth = width > 0 ? (width - GRID_GAP * (columns - 1)) / columns : thumbSize
+  const rowHeight = cardWidth * 0.75 + CARD_META + GRID_GAP
+  const rowCount = Math.ceil(items.length / columns)
+
+  useLayoutEffect(() => {
+    const grid = wrapRef.current
+    const scroll = scrollRef.current
+    if (!grid || !scroll) return
+    setScrollMargin(grid.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop)
+  }, [scrollRef, items.length, width, thumbSize])
+
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowHeight,
+    overscan: OVERSCAN,
+    scrollMargin
+  })
+
+  const virtualRows = virtualizer.getVirtualItems()
+
+  useEffect(() => {
+    virtualizer.measure()
+  }, [virtualizer, rowHeight])
+
+  useEffect(() => {
+    if (virtualRows.length === 0) return
+    const ids: string[] = []
+    for (const row of virtualRows) {
+      const start = row.index * columns
+      for (let i = 0; i < columns; i++) {
+        const item = items[start + i]
+        if (item && !thumbIds.has(item.id)) ids.push(item.id)
+      }
+    }
+    if (ids.length > 0) void window.api.prioritizeThumbs(ids)
+  }, [virtualRows, columns, items, thumbIds])
+
+  return (
+    <div ref={wrapRef} className="media-grid-virtual" style={{ height: virtualizer.getTotalSize() }}>
+      {virtualRows.map((row) => {
+        const start = row.index * columns
+        return (
+          <div
+            key={row.key}
+            className="media-grid media-grid-row"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              transform: `translateY(${row.start - scrollMargin}px)`,
+              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
+            }}
+          >
+            {Array.from({ length: columns }, (_, col) => {
+              const item = items[start + col]
+              if (!item) return <div key={col} />
+              return (
+                <MediaCard
+                  key={item.id}
+                  item={item}
+                  selected={selected.has(item.id)}
+                  active={item.id === activeId}
+                  pinned={pinned.has(item.id)}
+                  thumbReady={thumbIds.has(item.id)}
+                  showPin={handlers.showPin}
+                  {...handlers}
+                />
+              )
+            })}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 interface MediaCardProps {
   item: MediaItem
   selected: boolean
   active: boolean
   pinned: boolean
+  thumbReady: boolean
+  showPin?: boolean
   onItemClick: (id: string, event: MouseEvent) => void
   onToggleCheck: (id: string) => void
   onTogglePin: (id: string) => void
@@ -65,6 +206,8 @@ const MediaCard = memo(function MediaCard({
   selected,
   active,
   pinned,
+  thumbReady,
+  showPin = true,
   onItemClick,
   onToggleCheck,
   onTogglePin,
@@ -78,7 +221,8 @@ const MediaCard = memo(function MediaCard({
       title={item.fileName}
     >
       <div className="media-thumb">
-        {item.type === 'image' ? <ImageThumb item={item} /> : <VideoThumb item={item} />}
+        <ItemThumb item={item} ready={thumbReady} />
+        <DurationBadge item={item} />
         <button
           className="card-check"
           aria-label={selected ? 'Deselect' : 'Select'}
@@ -89,17 +233,19 @@ const MediaCard = memo(function MediaCard({
         >
           <Check size={14} strokeWidth={3} />
         </button>
-        <button
-          className={`card-pin ${pinned ? 'on' : ''}`}
-          aria-label={pinned ? 'Unpin' : 'Pin'}
-          title={pinned ? 'Unpin' : 'Pin to the top'}
-          onClick={(e) => {
-            e.stopPropagation()
-            onTogglePin(item.id)
-          }}
-        >
-          <Pin size={13} fill={pinned ? 'currentColor' : 'none'} />
-        </button>
+        {showPin && (
+          <button
+            className={`card-pin ${pinned ? 'on' : ''}`}
+            aria-label={pinned ? 'Unpin' : 'Pin'}
+            title={pinned ? 'Unpin' : 'Pin to the top'}
+            onClick={(e) => {
+              e.stopPropagation()
+              onTogglePin(item.id)
+            }}
+          >
+            <Pin size={13} fill={pinned ? 'currentColor' : 'none'} />
+          </button>
+        )}
       </div>
       <div className="media-meta">
         <span className="media-name">{item.fileName}</span>
@@ -117,78 +263,3 @@ const MediaCard = memo(function MediaCard({
     </div>
   )
 })
-
-function ThumbFallback({ item }: { item: MediaItem }) {
-  return (
-    <div className="thumb-fallback">
-      <FileWarning size={22} />
-      <span>{extensionOf(item.fileName)}</span>
-    </div>
-  )
-}
-
-function ImageThumb({ item }: { item: MediaItem }) {
-  const [failed, setFailed] = useState(false)
-  if (failed) return <ThumbFallback item={item} />
-  return (
-    <img
-      src={mediaUrl(item)}
-      alt=""
-      loading="lazy"
-      decoding="async"
-      draggable={false}
-      onError={() => setFailed(true)}
-    />
-  )
-}
-
-/** Only attaches the video source once the card scrolls into view, to keep large libraries fast. */
-function VideoThumb({ item }: { item: MediaItem }) {
-  const ref = useRef<HTMLVideoElement>(null)
-  const [visible, setVisible] = useState(false)
-  const [failed, setFailed] = useState(false)
-  const [duration, setDuration] = useState<number | null>(null)
-
-  useEffect(() => {
-    setDuration(null)
-    setFailed(false)
-  }, [item.id, item.size, item.relPath])
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el || visible) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setVisible(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin: '300px' }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [visible])
-
-  return (
-    <>
-      {failed ? (
-        <ThumbFallback item={item} />
-      ) : (
-        <video
-          ref={ref}
-          src={visible ? `${mediaUrl(item)}#t=0.5` : undefined}
-          preload="metadata"
-          muted
-          playsInline
-          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-          onError={() => setFailed(true)}
-        />
-      )}
-      <div className="video-badge">
-        <Play size={11} fill="currentColor" />
-        {duration !== null && <span>{formatDuration(duration)}</span>}
-      </div>
-    </>
-  )
-}

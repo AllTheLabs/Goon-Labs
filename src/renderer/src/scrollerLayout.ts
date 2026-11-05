@@ -162,16 +162,27 @@ export async function probeAspects(
   onProgress: (done: number) => void
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>()
+  const unknown: MediaItem[] = []
+  for (const item of items) {
+    if (item.width && item.height) {
+      result.set(item.id, item.width / item.height)
+    } else {
+      unknown.push(item)
+    }
+  }
+  onProgress(result.size)
   let next = 0
-  let done = 0
+  let done = result.size
   const worker = async () => {
-    while (next < items.length) {
-      const item = items[next++]
+    while (next < unknown.length) {
+      const item = unknown[next++]
       const aspect = await probeAspect(item, srcOf(item))
       if (aspect) result.set(item.id, aspect)
       onProgress(++done)
     }
   }
-  await Promise.all(Array.from({ length: Math.min(6, items.length) }, worker))
+  if (unknown.length > 0) {
+    await Promise.all(Array.from({ length: Math.min(6, unknown.length) }, worker))
+  }
   return result
 }

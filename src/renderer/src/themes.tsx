@@ -12,6 +12,7 @@ import {
   Grid3x3,
   Image,
   ListVideo,
+  MonitorPlay,
   Orbit,
   Repeat,
   Scissors,
@@ -84,6 +85,7 @@ export interface ThemeCopy {
   photos: string
   videos: string
   untagged: string
+  feelingLucky: string
   untaggedEmptyTitle: string
   untaggedEmptyBody: string
   untaggedHint: string
@@ -99,6 +101,8 @@ export interface ThemeCopy {
   goonLoop: string
   timeDilation: string
   goonImageFormat: string
+  sessionsHeading: string
+  goonSessions: string
   tagsHeading: string
   tagsEmpty: string
   searchPlaceholder: string
@@ -123,6 +127,7 @@ export interface ThemeIcons {
   goonLoop: Icon
   timeDilation: Icon
   goonImageFormat: Icon
+  goonSessions: Icon
   live?: Icon
 }
 
@@ -149,6 +154,7 @@ const DEFAULT_COPY: ThemeCopy = {
   photos: 'Photos',
   videos: 'Videos',
   untagged: 'Untagged',
+  feelingLucky: "I'm feeling lucky",
   untaggedEmptyTitle: 'Nothing left to tag',
   untaggedEmptyBody: 'Every photo and video already has at least one tag.',
   untaggedHint:
@@ -165,6 +171,8 @@ const DEFAULT_COPY: ThemeCopy = {
   goonLoop: 'Goon Loop',
   timeDilation: 'Time Dilation',
   goonImageFormat: 'Goon Image Format',
+  sessionsHeading: 'Your Sessions',
+  goonSessions: 'Goon Sessions',
   tagsHeading: 'Tags',
   tagsEmpty: 'Tags you add to media will show up here.',
   searchPlaceholder: 'Search names & tags…',
@@ -188,7 +196,8 @@ const DEFAULT_ICONS: ThemeIcons = {
   splicer: Combine,
   goonLoop: Repeat,
   timeDilation: Clock,
-  goonImageFormat: Image
+  goonImageFormat: Image,
+  goonSessions: MonitorPlay
 }
 
 const LIGHT_BASE = {

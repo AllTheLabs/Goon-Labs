@@ -15,13 +15,19 @@ interface ScrollerSetupProps {
   onClose: () => void
 }
 
-export function matchVideos(videos: MediaItem[], tags: string[], match: TagMatch): MediaItem[] {
-  if (tags.length === 0) return videos
-  return videos.filter((video) =>
-    match === 'any'
+export function matchVideos(
+  videos: MediaItem[],
+  tags: string[],
+  match: TagMatch,
+  excluded: string[] = []
+): MediaItem[] {
+  return videos.filter((video) => {
+    if (excluded.length > 0 && excluded.some((tag) => video.tags.includes(tag))) return false
+    if (tags.length === 0) return true
+    return match === 'any'
       ? tags.some((tag) => video.tags.includes(tag))
       : tags.every((tag) => video.tags.includes(tag))
-  )
+  })
 }
 
 export function ScrollerSetup({ videos, initialTags, onStart, onClose }: ScrollerSetupProps) {
@@ -37,8 +43,12 @@ export function ScrollerSetup({ videos, initialTags, onStart, onClose }: Scrolle
     initialTags.filter((tag) => videoTagCounts.some(([t]) => t === tag))
   )
   const [match, setMatch] = useState<TagMatch>('any')
+  const [excluded, setExcluded] = useState<string[]>([])
   const [launch, setLaunch] = useState(defaultLabLaunch)
-  const matched = useMemo(() => matchVideos(videos, tags, match), [videos, tags, match])
+  const matched = useMemo(
+    () => matchVideos(videos, tags, match, excluded),
+    [videos, tags, match, excluded]
+  )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -82,6 +92,8 @@ export function ScrollerSetup({ videos, initialTags, onStart, onClose }: Scrolle
                 onToggle={toggle}
                 match={match}
                 onMatch={setMatch}
+                excluded={excluded}
+                onExcluded={setExcluded}
                 icon={Hash}
                 autoFocus
               />

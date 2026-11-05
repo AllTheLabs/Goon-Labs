@@ -10,6 +10,10 @@ export function previewUrl(item: MediaItem): string {
   return `media://item/.mediamanager/previews/${encodeURIComponent(item.id)}.mp4`
 }
 
+export function thumbUrl(item: MediaItem): string {
+  return `media://item/.mediamanager/thumbs/${encodeURIComponent(item.id)}.jpg?v=${item.size}-${encodeURIComponent(item.importedAt)}`
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   const units = ['KB', 'MB', 'GB', 'TB']

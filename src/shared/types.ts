@@ -9,6 +9,10 @@ export interface MediaItem {
   size: number
   importedAt: string
   tags: string[]
+  /** Seconds, when known. Videos only. */
+  duration?: number
+  width?: number
+  height?: number
 }
 
 export interface LibraryViewStats {
@@ -24,9 +28,14 @@ export interface LibraryShelf {
 export interface LibraryState {
   root: string
   items: MediaItem[]
+  /** Lab recordings in `sessions/`. Not part of the main library or lab setups. */
+  sessions: MediaItem[]
   /** Videos that have a lightweight preview copy for the Scroller. */
   previewIds: string[]
   previewsPending: number
+  /** Items that have a JPEG still for the library grid. */
+  thumbIds: string[]
+  thumbsPending: number
   pinnedIds: string[]
   views: Record<string, LibraryViewStats>
 }
@@ -35,6 +44,15 @@ export interface PreviewReadyEvent {
   /** The video whose preview just finished, or null when only the queue length changed. */
   id: string | null
   remaining: number
+}
+
+export interface ThumbReadyEvent {
+  /** The item whose still just finished, or null when only the queue length changed. */
+  id: string | null
+  remaining: number
+  duration?: number
+  width?: number
+  height?: number
 }
 
 export interface ImportResult {
@@ -81,7 +99,6 @@ export interface DownloaderInfo {
 }
 
 export interface AppSettings {
-  sessionDir: string | null
   softwareWindow: boolean
   /** What this process actually launched with. A toggle change needs a restart. */
   softwareWindowActive: boolean
@@ -158,6 +175,8 @@ export interface MediaApi {
   togglePins(ids: string[]): Promise<LibraryShelf>
   /** Counts an open in the library viewer. Labs and utilities do not call this. */
   recordLibraryView(id: string): Promise<LibraryShelf>
+  /** Generate stills for these ids before the rest of the queue (visible cards). */
+  prioritizeThumbs(ids: string[]): Promise<void>
   importWithDialog(source: ImportSource): Promise<ImportResult | null>
   importPaths(paths: string[]): Promise<ImportResult>
   addTags(ids: string[], tags: string[]): Promise<MediaItem[]>
@@ -170,6 +189,9 @@ export interface MediaApi {
   getPathForFile(file: File): string
   /** Returns an unsubscribe function. */
   onPreviewReady(listener: (event: PreviewReadyEvent) => void): () => void
+  onThumbReady(listener: (event: ThumbReadyEvent) => void): () => void
+  /** Full library after the background disk walk finishes. */
+  onLibrarySynced(listener: (state: LibraryState) => void): () => void
   readClipboardText(): Promise<string>
   downloadUrls(urls: string[]): Promise<DownloadJob[]>
   getDownloads(): Promise<DownloadJob[]>
@@ -189,6 +211,9 @@ export interface MediaApi {
   setSoftwareWindow(enabled: boolean): Promise<boolean>
   setDiscordRichPresence(enabled: boolean): Promise<boolean>
   setDiscordActivity(activity: DiscordActivity): Promise<void>
+  /** Consecutive local days the app has been opened. Opening today counts. */
+  getGoonStreak(): Promise<number>
+  onGoonStreak(listener: (count: number) => void): () => void
   getUpdateStatus(): Promise<AppUpdateStatus>
   checkForUpdate(): Promise<AppUpdateStatus>
   installUpdate(): Promise<AppUpdateStatus>
@@ -197,7 +222,6 @@ export interface MediaApi {
   dismissChangelog(): Promise<void>
   openExternal(url: string): Promise<void>
   relaunchApp(): Promise<void>
-  chooseSessionDir(): Promise<string | null>
   trimVideo(id: string, start: number, end: number, mode: TrimMode): Promise<TrimResult>
   loopVideo(id: string, start: number, end: number, mode: TrimMode): Promise<TrimResult>
   dilateVideo(id: string, spans: DilationSpan[], mode: TrimMode, interpolate: boolean): Promise<TrimResult>

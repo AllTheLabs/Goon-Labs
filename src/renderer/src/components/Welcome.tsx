@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Film, Folder, FolderOpen, Image } from 'lucide-react'
 import { useTheme } from '../themes'
+import { GoonStreak } from './GoonStreak'
 
 interface WelcomeProps {
   onChoose: () => void
@@ -22,10 +23,11 @@ export function Welcome({ onChoose }: WelcomeProps) {
           <BrandIcon size={34} />
         </div>
         <h1>{copy.welcomeTitle}</h1>
+        <GoonStreak />
         <p>
-          Choose a folder to use as your media repository. A <strong>Pictures</strong> and a{' '}
-          <strong>Videos</strong> folder will be created inside it, and everything you import is
-          sorted into the right one automatically.
+          Choose a folder to use as your media repository. A <strong>Pictures</strong>,{' '}
+          <strong>Videos</strong>, and <strong>sessions</strong> folder will be created inside it.
+          Imports go into Pictures or Videos; lab recordings save to sessions.
         </p>
 
         <div className="folder-tree">
@@ -37,6 +39,9 @@ export function Welcome({ onChoose }: WelcomeProps) {
           </div>
           <div className="folder-tree-row nested">
             <Film size={16} /> Videos
+          </div>
+          <div className="folder-tree-row nested">
+            <Film size={16} /> sessions
           </div>
         </div>
 
@@ -53,8 +58,8 @@ export function Welcome({ onChoose }: WelcomeProps) {
           <span>
             <strong>Show Goon Labs on Discord</strong>
             <small>
-              Optional. Friends see AllTheLabs, plus that the app is open and which lab you are in —
-              not your library. You can change this later in Settings.
+              Optional. Friends see Goon Labs, your goon streak, and which lab you are in — not
+              your library. You can change this later in Settings.
             </small>
           </span>
         </label>

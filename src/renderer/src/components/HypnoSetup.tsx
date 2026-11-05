@@ -64,6 +64,7 @@ export function HypnoSetup({ videos, initialTags, onStart, onClose }: HypnoSetup
     initialTags.filter((tag) => videoTagCounts.some(([t]) => t === tag))
   )
   const [match, setMatch] = useState<TagMatch>('any')
+  const [excluded, setExcluded] = useState<string[]>([])
   const [queue, setQueue] = useState<QueueEntry[]>([])
   const [settings, setSettings] = useState(loadHypnoSettings)
   const [launch, setLaunch] = useState(defaultLabLaunch)
@@ -71,11 +72,11 @@ export function HypnoSetup({ videos, initialTags, onStart, onClose }: HypnoSetup
 
   const matched = useMemo(() => {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
-    return matchVideos(videos, tags, match).filter((video) => {
+    return matchVideos(videos, tags, match, excluded).filter((video) => {
       const name = video.fileName.toLowerCase()
       return terms.every((term) => name.includes(term))
     })
-  }, [videos, tags, match, query])
+  }, [videos, tags, match, excluded, query])
 
   const queuedCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -164,6 +165,8 @@ export function HypnoSetup({ videos, initialTags, onStart, onClose }: HypnoSetup
                   onToggle={toggleTag}
                   match={match}
                   onMatch={setMatch}
+                  excluded={excluded}
+                  onExcluded={setExcluded}
                   icon={TagIcon}
                 />
                 <div className="queue-list">

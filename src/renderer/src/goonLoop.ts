@@ -11,6 +11,17 @@ const MAX_SAMPLES = 16
 const MIN_LOOP = 0.4
 const SEEK_TIMEOUT_MS = 2500
 
+/** Window around the playhead for a live loop search in a lab. */
+export function liveLoopSearchSpan(duration: number, currentTime: number): { start: number; end: number } {
+  if (!Number.isFinite(duration) || duration <= 0) return { start: 0, end: 0 }
+  if (duration <= 8) return { start: 0, end: duration }
+  const length = Math.min(5.2, Math.max(2.5, duration * 0.16))
+  let start = currentTime - length * 0.35
+  if (start < 0) start = 0
+  if (start + length > duration) start = Math.max(0, duration - length)
+  return { start, end: start + length }
+}
+
 function sampleTimes(from: number, to: number, cap: number): number[] {
   if (to <= from) return [from]
   const count = Math.min(cap, Math.max(4, Math.round((to - from) * 12) + 1))

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, FolderOpen, FolderSearch, Loader2, RefreshCw, Settings as SettingsIcon, X } from 'lucide-react'
+import { Download, Loader2, RefreshCw, Settings as SettingsIcon, X } from 'lucide-react'
 import { useAppUpdate } from '../appUpdate'
 import { loadLabPrefs, saveLabPrefs } from '../labPrefs'
 import type { LabPrefs } from '../labPrefs'
@@ -78,6 +78,7 @@ const BEAT_KEYS: [string, string][] = [
 const HYPNO_KEYS: [string, string][] = [
   ['Space', 'Pause / resume'],
   ['→', 'Next snippet'],
+  ['H', 'Live loop on / off'],
   ['1 / 2 / 3', 'Linger / Flash / Strobe'],
   ['B', 'Melodic rumble on / off'],
   ['E', 'Overlay effects'],
@@ -132,7 +133,6 @@ function KeyTable({ title, rows }: { title: string; rows: [string, string][] }) 
 }
 
 export function Settings({ onClose }: SettingsProps) {
-  const [sessionDir, setSessionDir] = useState<string | null>(null)
   const [softwareWindow, setSoftwareWindow] = useState(false)
   const [softwareWindowActive, setSoftwareWindowActive] = useState(false)
   const [discordRichPresence, setDiscordRichPresence] = useState(false)
@@ -142,7 +142,6 @@ export function Settings({ onClose }: SettingsProps) {
 
   useEffect(() => {
     window.api.getAppSettings().then((settings) => {
-      setSessionDir(settings.sessionDir)
       setSoftwareWindow(settings.softwareWindow)
       setSoftwareWindowActive(settings.softwareWindowActive)
       setDiscordRichPresence(settings.discordRichPresence)
@@ -212,32 +211,6 @@ export function Settings({ onClose }: SettingsProps) {
         </section>
 
         <section className="settings-block">
-          <h3>Session recordings</h3>
-          <p className="hint">
-            Labs save here when you hit Record, or when a lab is set to start recording on its own.
-          </p>
-          <div className="settings-path">
-            <code className="mono" title={sessionDir ?? undefined}>
-              {sessionDir ?? 'Not set — you will be asked where to save, or Videos is used'}
-            </code>
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={async () => {
-                const dir = await window.api.chooseSessionDir()
-                if (dir) setSessionDir(dir)
-              }}
-            >
-              <FolderOpen size={14} /> Choose folder
-            </button>
-            {sessionDir && (
-              <button className="btn btn-ghost btn-sm" onClick={() => window.api.revealPath(sessionDir)}>
-                <FolderSearch size={14} /> Show
-              </button>
-            )}
-          </div>
-        </section>
-
-        <section className="settings-block">
           <h3>When a lab opens</h3>
           <LabPrefToggles value={prefs} onChange={updatePrefs} />
         </section>
@@ -257,10 +230,10 @@ export function Settings({ onClose }: SettingsProps) {
             <span>
               <strong>Rich Presence</strong>
               <small>
-                Show as AllTheLabs on your Discord profile. Friends see browsing, idle, or the lab
-                you are in, and a link to GitHub releases — not what you are watching. Needs the
-                Discord desktop app, and Activity Status turned on in Discord (Settings → Activity
-                Privacy). Off by default.
+                Show as Goon Labs on your Discord profile. Friends see your goon streak, browsing,
+                idle, or the lab you are in, and a link to GitHub releases — not what you are
+                watching. Needs the Discord desktop app, and Activity Status turned on in Discord
+                (Settings → Activity Privacy). Off by default.
               </small>
             </span>
           </label>

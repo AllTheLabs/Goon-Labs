@@ -62,9 +62,13 @@ export function StillSetup({ photos, initialTags, onStart, onClose }: StillSetup
     initialTags.filter((tag) => photoTagCounts.some(([t]) => t === tag))
   )
   const [match, setMatch] = useState<TagMatch>('any')
+  const [excluded, setExcluded] = useState<string[]>([])
   const [settings, setSettings] = useState(loadStillSettings)
   const [launch, setLaunch] = useState(defaultLabLaunch)
-  const matched = useMemo(() => matchVideos(photos, tags, match), [photos, tags, match])
+  const matched = useMemo(
+    () => matchVideos(photos, tags, match, excluded),
+    [photos, tags, match, excluded]
+  )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -117,6 +121,8 @@ export function StillSetup({ photos, initialTags, onStart, onClose }: StillSetup
                 onToggle={toggle}
                 match={match}
                 onMatch={setMatch}
+                excluded={excluded}
+                onExcluded={setExcluded}
                 icon={TagIcon}
                 autoFocus
               />

@@ -10,7 +10,8 @@ import { IMAGE_EXTENSIONS, VIDEO_EXTENSIONS } from './mediaTypes'
 import { loadPixelModel } from './pixelModel'
 import { handleMediaProtocol, registerMediaScheme } from './protocol'
 import { installCapturePermissions, SessionRecording, windowSourceId } from './sessionCapture'
-import { setDiscordActivity, setDiscordEnabled, stopDiscordPresence } from './discordPresence'
+import { setDiscordActivity, setDiscordEnabled, setDiscordStreak, stopDiscordPresence } from './discordPresence'
+import { localDayKey, msUntilNextLocalMidnight, nextGoonStreak, yesterdayKey } from './goonStreak'
 
 interface AppConfig {
   repositoryPath?: string
@@ -18,10 +19,14 @@ interface AppConfig {
   lastSessionDir?: string
   /** Draw the window with the CPU. ffmpeg jobs (Time Dilation, etc.) still use the GPU. */
   softwareWindow?: boolean
-  /** Show AllTheLabs on Discord. Off by default. */
+  /** Show Goon Labs on Discord. Off by default. */
   discordRichPresence?: boolean
   /** Last version whose GitHub release notes were shown. */
   lastChangelogVersion?: string
+  /** Consecutive local days the app has been opened. */
+  goonStreak?: number
+  /** YYYY-MM-DD of the last day that counted toward goonStreak. */
+  goonStreakDate?: string
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -71,12 +76,47 @@ async function writeConfig(config: AppConfig): Promise<void> {
   await fs.writeFile(configPath(), JSON.stringify(config, null, 2), 'utf8')
 }
 
+async function touchGoonStreak(): Promise<number> {
+  const config = await readConfig()
+  const next = nextGoonStreak(config.goonStreak, config.goonStreakDate, localDayKey(), yesterdayKey())
+  if (next.count !== config.goonStreak || next.date !== config.goonStreakDate) {
+    await writeConfig({ ...config, goonStreak: next.count, goonStreakDate: next.date })
+  }
+  setDiscordStreak(next.count)
+  mainWindow?.webContents.send('streak:update', next.count)
+  return next.count
+}
+
+function scheduleStreakRollover(): void {
+  setTimeout(() => {
+    void touchGoonStreak()
+    scheduleStreakRollover()
+  }, msUntilNextLocalMidnight())
+}
+
+let activeRoot: string | null = null
+
 function openLibrary(root: string): Promise<Library> {
-  return Library.open(root, (id, remaining) => {
-    if (library?.root === path.resolve(root)) {
-      mainWindow?.webContents.send('media:preview-ready', { id, remaining })
+  const resolved = path.resolve(root)
+  activeRoot = resolved
+  return Library.open(
+    root,
+    (id, remaining) => {
+      if (activeRoot === resolved) {
+        mainWindow?.webContents.send('media:preview-ready', { id, remaining })
+      }
+    },
+    (event) => {
+      if (activeRoot === resolved) {
+        mainWindow?.webContents.send('media:thumb-ready', event)
+      }
+    },
+    (state) => {
+      if (activeRoot === resolved) {
+        mainWindow?.webContents.send('library:synced', state)
+      }
     }
-  })
+  )
 }
 
 async function openConfiguredLibrary(): Promise<Library | null> {
@@ -122,6 +162,9 @@ function registerIpc(): void {
 
   ipcMain.handle('library:toggle-pins', (_event, ids: string[]) => requireLibrary().togglePins(ids))
   ipcMain.handle('library:record-view', (_event, id: string) => requireLibrary().recordLibraryView(id))
+  ipcMain.handle('library:prioritize-thumbs', (_event, ids: string[]) => {
+    requireLibrary().prioritizeThumbs(ids)
+  })
 
   ipcMain.handle('media:import-dialog', async (_event, source: ImportSource) => {
     const lib = requireLibrary()
@@ -206,25 +249,22 @@ function registerIpc(): void {
   ipcMain.handle('downloads:clear', () => downloads.clearFinished())
   ipcMain.handle('downloads:info', () => downloads.info())
 
-  ipcMain.handle('session:begin', async (_event, labName: string, options?: { prompt?: boolean }) => {
-    const config = await readConfig()
-    const filePath = await sessionRecording.begin(labName, {
-      sessionDir: config.sessionDir,
-      lastDir: config.lastSessionDir,
-      prompt: options?.prompt
-    })
-    if (filePath) await writeConfig({ ...config, lastSessionDir: path.dirname(filePath) })
-    return filePath
+  ipcMain.handle('session:begin', async (_event, labName: string) => {
+    const lib = requireLibrary()
+    return sessionRecording.begin(labName, { sessionDir: lib.sessionsPath })
   })
   ipcMain.handle('session:append', (_event, data: ArrayBuffer) => sessionRecording.append(data))
-  ipcMain.handle('session:finish', () => sessionRecording.finish())
+  ipcMain.handle('session:finish', async () => {
+    const dest = await sessionRecording.finish()
+    if (dest) await requireLibrary().ingestSession(dest)
+    return dest
+  })
   ipcMain.handle('session:reveal-path', (_event, filePath: string) => sessionRecording.reveal(filePath))
   ipcMain.handle('session:window-source', () => windowSourceId())
 
   ipcMain.handle('settings:get', async () => {
     const config = await readConfig()
     return {
-      sessionDir: config.sessionDir ?? null,
       softwareWindow: Boolean(config.softwareWindow),
       softwareWindowActive,
       discordRichPresence: Boolean(config.discordRichPresence)
@@ -245,6 +285,7 @@ function registerIpc(): void {
   ipcMain.handle('discord:set-activity', (_event, activity: DiscordActivity) => {
     setDiscordActivity(activity)
   })
+  ipcMain.handle('streak:get', () => touchGoonStreak())
   ipcMain.handle('app:relaunch', () => {
     app.relaunch()
     app.exit(0)
@@ -296,17 +337,6 @@ function registerIpc(): void {
     return shell.openExternal(url)
   })
 
-  ipcMain.handle('settings:choose-session-dir', async () => {
-    const config = await readConfig()
-    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow!, {
-      title: 'Choose recordings folder',
-      defaultPath: config.sessionDir ?? config.lastSessionDir ?? app.getPath('videos'),
-      properties: ['openDirectory']
-    })
-    if (canceled || !filePaths[0]) return null
-    await writeConfig({ ...config, sessionDir: filePaths[0] })
-    return filePaths[0]
-  })
 }
 
 function createWindow(): void {
@@ -323,7 +353,8 @@ function createWindow(): void {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       sandbox: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      spellcheck: false
     }
   })
 
@@ -350,7 +381,9 @@ app.whenReady().then(async () => {
   onUpdateStatus((status) => mainWindow?.webContents.send('update:status', status))
   void checkForUpdate()
   const config = await readConfig()
+  await touchGoonStreak()
   if (config.discordRichPresence) setDiscordEnabled(true)
+  scheduleStreakRollover()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

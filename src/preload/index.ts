@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AppUpdateStatus, DownloadJob, MediaApi, PreviewReadyEvent } from '../shared/types'
+import type {
+  AppUpdateStatus,
+  DownloadJob,
+  LibraryState,
+  MediaApi,
+  PreviewReadyEvent,
+  ThumbReadyEvent
+} from '../shared/types'
 
 const api: MediaApi = {
   getLibrary: () => ipcRenderer.invoke('library:get'),
@@ -7,6 +14,7 @@ const api: MediaApi = {
   refreshLibrary: () => ipcRenderer.invoke('library:refresh'),
   togglePins: (ids) => ipcRenderer.invoke('library:toggle-pins', ids),
   recordLibraryView: (id) => ipcRenderer.invoke('library:record-view', id),
+  prioritizeThumbs: (ids) => ipcRenderer.invoke('library:prioritize-thumbs', ids),
   importWithDialog: (source) => ipcRenderer.invoke('media:import-dialog', source),
   importPaths: (paths) => ipcRenderer.invoke('media:import-paths', paths),
   addTags: (ids, tags) => ipcRenderer.invoke('media:add-tags', ids, tags),
@@ -21,6 +29,16 @@ const api: MediaApi = {
       listener(payload)
     ipcRenderer.on('media:preview-ready', handler)
     return () => ipcRenderer.removeListener('media:preview-ready', handler)
+  },
+  onThumbReady: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: ThumbReadyEvent) => listener(payload)
+    ipcRenderer.on('media:thumb-ready', handler)
+    return () => ipcRenderer.removeListener('media:thumb-ready', handler)
+  },
+  onLibrarySynced: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: LibraryState) => listener(payload)
+    ipcRenderer.on('library:synced', handler)
+    return () => ipcRenderer.removeListener('library:synced', handler)
   },
   readClipboardText: () => ipcRenderer.invoke('clipboard:read-text'),
   downloadUrls: (urls) => ipcRenderer.invoke('downloads:enqueue', urls),
@@ -43,6 +61,12 @@ const api: MediaApi = {
   setSoftwareWindow: (enabled) => ipcRenderer.invoke('settings:set-software-window', enabled),
   setDiscordRichPresence: (enabled) => ipcRenderer.invoke('settings:set-discord-presence', enabled),
   setDiscordActivity: (activity) => ipcRenderer.invoke('discord:set-activity', activity),
+  getGoonStreak: () => ipcRenderer.invoke('streak:get'),
+  onGoonStreak: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, count: number) => listener(count)
+    ipcRenderer.on('streak:update', handler)
+    return () => ipcRenderer.removeListener('streak:update', handler)
+  },
   getUpdateStatus: () => ipcRenderer.invoke('update:status'),
   checkForUpdate: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
@@ -55,7 +79,6 @@ const api: MediaApi = {
   dismissChangelog: () => ipcRenderer.invoke('changelog:dismiss'),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
-  chooseSessionDir: () => ipcRenderer.invoke('settings:choose-session-dir'),
   trimVideo: (id, start, end, mode) => ipcRenderer.invoke('media:trim', id, start, end, mode),
   loopVideo: (id, start, end, mode) => ipcRenderer.invoke('media:loop', id, start, end, mode),
   dilateVideo: (id, spans, mode, interpolate) =>

@@ -1,3 +1,5 @@
+import { setLabAudioCapture } from './labAudioCapture'
+
 /** Wet reverb for clip audio, plus a dry rumble whose arpeggio lands a kick on each cut. */
 
 const ARP_SETS = [
@@ -56,6 +58,7 @@ export class HypnoReverb {
   private readonly melodyDelay = this.ctx.createDelay(1)
   private readonly cueGain = this.ctx.createGain()
   private readonly sources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>()
+  private readonly captureDest = this.ctx.createMediaStreamDestination()
   private readonly drones: AudioScheduledSourceNode[] = []
   private voices: AudioScheduledSourceNode[] = []
   private kicks: AudioScheduledSourceNode[] = []
@@ -76,6 +79,7 @@ export class HypnoReverb {
     this.dry.connect(this.master)
     this.wet.connect(convolver).connect(lowpass).connect(this.master)
     this.master.connect(this.ctx.destination)
+    this.master.connect(this.captureDest)
 
     const rumbleComp = this.ctx.createDynamicsCompressor()
     rumbleComp.threshold.value = -16
@@ -83,7 +87,9 @@ export class HypnoReverb {
     rumbleComp.ratio.value = 3.5
     rumbleComp.attack.value = 0.004
     rumbleComp.release.value = 0.14
-    this.rumbleBus.connect(rumbleComp).connect(this.rumbleMute).connect(this.rumbleVol).connect(this.ctx.destination)
+    this.rumbleBus.connect(rumbleComp).connect(this.rumbleMute).connect(this.rumbleVol)
+    this.rumbleVol.connect(this.ctx.destination)
+    this.rumbleVol.connect(this.captureDest)
     this.rumbleVol.gain.value = 0.72
     this.droneDuck.gain.value = 1
     this.melodyDuck.gain.value = 1
@@ -91,6 +97,7 @@ export class HypnoReverb {
     this.cueGain.connect(this.ctx.destination)
     this.startDrone()
     this.startMelodyBus()
+    setLabAudioCapture(() => (this.closed ? null : this.captureDest.stream))
   }
 
   attach(element: HTMLMediaElement): void {
@@ -201,6 +208,7 @@ export class HypnoReverb {
 
   close(): void {
     this.closed = true
+    setLabAudioCapture(null)
     this.cancelPhrase()
     for (const node of this.drones) {
       try {
