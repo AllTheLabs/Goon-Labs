@@ -1,5 +1,7 @@
 import { promises as fs } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { MediaType, ThumbReadyEvent } from '../shared/types'
 import { FFMPEG, parseMediaInfo, runFfmpegRaw } from './previews'
 
@@ -171,4 +173,68 @@ async function extractThumb(
     }
   }
   return { ok: false, stderr }
+}
+
+const STRIP_W = 96
+const STRIP_H = 54
+const STRIP_SCALE = `scale=${STRIP_W}:${STRIP_H}:force_original_aspect_ratio=increase:force_divisible_by=2,crop=${STRIP_W}:${STRIP_H}`
+
+/**
+ * Evenly spaced JPEG stills for editor timelines. ffmpeg seeks so the preview
+ * video is not stolen by a second decoder, and each slot stays at a fixed time.
+ */
+export async function extractFilmstrip(
+  source: string,
+  duration: number,
+  count: number
+): Promise<string[]> {
+  const n = Math.min(40, Math.max(8, Math.round(count)))
+  let span = duration
+  if (!Number.isFinite(span) || span <= 0) {
+    span = parseMediaInfo((await runFfmpegRaw(['-hide_banner', '-i', source])).stderr).duration
+  }
+  if (!Number.isFinite(span) || span <= 0) return []
+
+  const work = path.join(os.tmpdir(), `goon-strip-${randomUUID()}`)
+  await fs.mkdir(work, { recursive: true })
+  const times = Array.from({ length: n }, (_, i) =>
+    Math.min(Math.max(0, span - 0.05), ((i + 0.45) / n) * span)
+  )
+
+  try {
+    let next = 0
+    const urls: string[] = new Array(n).fill('')
+    const workers = Array.from({ length: Math.min(3, n) }, async () => {
+      for (;;) {
+        const index = next++
+        if (index >= times.length) return
+        const dest = path.join(work, `${String(index).padStart(3, '0')}.jpg`)
+        const grabbed = await grabStill(source, times[index], dest)
+        if (!grabbed) continue
+        urls[index] = `data:image/jpeg;base64,${(await fs.readFile(dest)).toString('base64')}`
+      }
+    })
+    await Promise.all(workers)
+    return urls
+  } finally {
+    await fs.rm(work, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+async function grabStill(source: string, time: number, dest: string): Promise<boolean> {
+  const out = ['-frames:v', '1', '-an', '-q:v', '6', dest]
+  const attempts = [
+    ['-y', '-hide_banner', '-loglevel', 'error', '-ss', time.toFixed(3), '-i', source, '-vf', STRIP_SCALE, ...out],
+    ['-y', '-hide_banner', '-loglevel', 'error', '-i', source, '-ss', time.toFixed(3), '-vf', STRIP_SCALE, ...out]
+  ]
+  for (const args of attempts) {
+    const result = await runFfmpegRaw(args)
+    if (!result.ok) continue
+    try {
+      if ((await fs.stat(dest)).size > 64) return true
+    } catch {
+      /* try the slower accurate seek */
+    }
+  }
+  return false
 }

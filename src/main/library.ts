@@ -12,16 +12,49 @@ import type {
   ImportResult,
   LibraryShelf,
   LibraryState,
+  DilationProgress,
   LibraryViewStats,
   MediaItem,
   MediaType,
   ThumbReadyEvent,
-  TrimMode
+  TrimMode,
+  DilationProgressStep
 } from '../shared/types'
 import { DILATION_FACTORS, GIF_FPS, GIF_QUALITIES } from '../shared/types'
 import { mediaTypeOf } from './mediaTypes'
+import { encodeDilatedFile } from './dilationEncode'
 import { FFMPEG, h264EncodeArgs, PreviewManager, probeVideo, runFfmpeg } from './previews'
 import { ThumbManager } from './thumbs'
+
+function jobSteps(
+  entries: { id: string; label: string }[],
+  activeId: string | 'done'
+): DilationProgressStep[] {
+  if (activeId === 'done') return entries.map((entry) => ({ ...entry, state: 'done' as const }))
+  const active = entries.findIndex((entry) => entry.id === activeId)
+  return entries.map((entry, index) => ({
+    ...entry,
+    state: (index < active ? 'done' : index === active ? 'active' : 'pending') as DilationProgressStep['state']
+  }))
+}
+
+function emitJob(
+  onProgress: ((progress: DilationProgress) => void) | undefined,
+  title: string,
+  entries: { id: string; label: string }[],
+  activeId: string | 'done',
+  percent: number,
+  detail: string
+): void {
+  onProgress?.({
+    title,
+    detail,
+    percent: Math.min(1, Math.max(0, percent)),
+    current: 0,
+    total: 0,
+    steps: jobSteps(entries, activeId)
+  })
+}
 
 const DILATION_TAG = 'time dilated'
 const LOOP_TAG = 'goon loop'
@@ -144,71 +177,6 @@ function normalizeDilationSpans(spans: DilationSpan[]): DilateRegion[] {
     }
   }
   return regions
-}
-
-function dilationFilter(
-  regions: DilateRegion[],
-  duration: number,
-  hasAudio: boolean,
-  fps: number,
-  interpolate: boolean
-): string {
-  const segs: DilateRegion[] = []
-  let cursor = 0
-  for (const region of regions) {
-    if (region.start > cursor + 0.01) segs.push({ start: cursor, end: region.start, factor: 1 })
-    segs.push(region)
-    cursor = region.end
-  }
-  if (duration > cursor + 0.01) segs.push({ start: cursor, end: duration, factor: 1 })
-  if (segs.length === 0) throw new Error('Nothing to dilate')
-
-  const ts = (value: number) => value.toFixed(3)
-  const fpsStr = String(Number(fps.toFixed(3)))
-  const even = 'scale=trunc(iw/2)*2:trunc(ih/2)*2'
-  const aformat = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo'
-  const filters: string[] = []
-  const concat: string[] = []
-
-  segs.forEach((seg, i) => {
-    const trimmed = `[0:v]trim=start=${ts(seg.start)}:end=${ts(seg.end)},setpts=PTS-STARTPTS`
-    if (seg.factor !== 1 && interpolate) {
-      const hi = Number((fps * seg.factor).toFixed(3))
-      filters.push(
-        `${trimmed},format=yuv420p,${even},minterpolate=fps=${hi}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,setpts=PTS*${seg.factor},fps=${fpsStr},format=yuv420p[v${i}]`
-      )
-    } else if (seg.factor !== 1) {
-      filters.push(`${trimmed},setpts=PTS*${seg.factor},format=yuv420p,${even},fps=${fpsStr}[v${i}]`)
-    } else {
-      filters.push(`${trimmed},format=yuv420p,${even},fps=${fpsStr}[v${i}]`)
-    }
-    concat.push(`[v${i}]`)
-
-    if (!hasAudio) return
-    const outDur = (seg.end - seg.start) * seg.factor
-    const fade = Math.min(0.05, Math.max(0.01, outDur / 4))
-    const fades = `afade=t=in:d=${ts(fade)},afade=t=out:st=${ts(Math.max(0, outDur - fade))}:d=${ts(fade)}`
-    const trimmedAudio = `[0:a]atrim=start=${ts(seg.start)}:end=${ts(seg.end)},asetpts=PTS-STARTPTS,${aformat}`
-    if (seg.factor !== 1) {
-      const tempo = Number((1 / seg.factor).toFixed(4))
-      filters.push(
-        `${trimmedAudio},rubberband=tempo=${tempo}:pitch=1:transients=smooth:smoothing=on:window=long:formant=preserved,adeclick,asplit=2[ad${i}][aw${i}]`
-      )
-      filters.push(
-        `[aw${i}]aecho=0.8:0.9:52|105|160|220:0.48|0.38|0.3|0.22,lowpass=f=7500[arev${i}]`
-      )
-      filters.push(
-        `[ad${i}][arev${i}]amix=inputs=2:duration=first:dropout_transition=0:normalize=0:weights=0.46\\ 0.72,alimiter=limit=0.96,${fades}[a${i}]`
-      )
-    } else {
-      filters.push(`${trimmedAudio},${fades}[a${i}]`)
-    }
-    concat.push(`[a${i}]`)
-  })
-
-  const audio = hasAudio ? ':a=1[outv][outa]' : ':a=0[outv]'
-  filters.push(`${concat.join('')}concat=n=${segs.length}:v=1${audio}`)
-  return filters.join(';')
 }
 
 interface SpliceRegion {
@@ -637,7 +605,8 @@ export class Library {
     id: string,
     start: number,
     end: number,
-    mode: 'new' | 'replace'
+    mode: 'new' | 'replace',
+    onProgress?: (progress: DilationProgress) => void
   ): Promise<{ item: MediaItem; replaced: boolean }> {
     const item = this.lookup(id)
     if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
@@ -652,34 +621,50 @@ export class Library {
     const dir = path.dirname(source)
     const stem = path.parse(item.fileName).name
     const duration = (end - start).toFixed(3)
+    const outDur = Math.max(0.1, end - start)
+    const title = 'Saving trim'
+    const steps = [
+      { id: 'read', label: 'Reading the video' },
+      { id: 'encode', label: 'Encoding the clip' },
+      { id: 'save', label: 'Saving' }
+    ]
+    emitJob(onProgress, title, steps, 'read', 0.04, 'Reading the video…')
 
     const encodeTo = async (dest: string) => {
-      await runFfmpeg([
-        '-y',
-        '-hide_banner',
-        '-loglevel',
-        'error',
-        '-i',
-        source,
-        '-ss',
-        Math.max(0, start).toFixed(3),
-        '-t',
-        duration,
-        '-map',
-        '0:v:0',
-        '-map',
-        '0:a:0?',
-        ...encoder,
-        '-c:a',
-        'aac',
-        '-b:a',
-        '192k',
-        '-ac',
-        '2',
-        '-movflags',
-        '+faststart',
-        dest
-      ])
+      emitJob(onProgress, title, steps, 'encode', 0.08, 'Encoding the clip…')
+      await runFfmpeg(
+        [
+          '-y',
+          '-hide_banner',
+          '-loglevel',
+          'error',
+          '-i',
+          source,
+          '-ss',
+          Math.max(0, start).toFixed(3),
+          '-t',
+          duration,
+          '-map',
+          '0:v:0',
+          '-map',
+          '0:a:0?',
+          ...encoder,
+          '-c:a',
+          'aac',
+          '-b:a',
+          '192k',
+          '-ac',
+          '2',
+          '-movflags',
+          '+faststart',
+          dest
+        ],
+        (seconds) => {
+          const ratio = Math.min(1, seconds / outDur)
+          emitJob(onProgress, title, steps, 'encode', 0.08 + ratio * 0.84, 'Encoding the clip…')
+        }
+      )
+      emitJob(onProgress, title, steps, 'save', 0.96, 'Saving…')
     }
 
     if (mode === 'new') {
@@ -703,6 +688,7 @@ export class Library {
       this.place(next)
       await this.save()
       this.indexItems([next])
+      emitJob(onProgress, title, steps, 'done', 1, 'Saved')
       return { item: next, replaced: false }
     }
 
@@ -731,6 +717,7 @@ export class Library {
     item.importedAt = new Date().toISOString()
     await this.save()
     await this.refreshDerivatives([item.id])
+    emitJob(onProgress, title, steps, 'done', 1, 'Saved')
     return { item, replaced: true }
   }
 
@@ -742,7 +729,8 @@ export class Library {
     id: string,
     start: number,
     end: number,
-    mode: TrimMode
+    mode: TrimMode,
+    onProgress?: (progress: DilationProgress) => void
   ): Promise<{ item: MediaItem; replaced: boolean }> {
     const item = this.lookup(id)
     if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
@@ -758,34 +746,50 @@ export class Library {
     const stem = path.parse(item.fileName).name
     const duration = (end - start).toFixed(3)
     const tags = [...new Set([...item.tags, normalizeTag(LOOP_TAG)])].sort()
+    const outDur = Math.max(0.1, end - start)
+    const title = 'Saving Goon Loop'
+    const steps = [
+      { id: 'read', label: 'Reading the video' },
+      { id: 'encode', label: 'Encoding the loop' },
+      { id: 'save', label: 'Saving' }
+    ]
+    emitJob(onProgress, title, steps, 'read', 0.04, 'Reading the video…')
 
     const encodeTo = async (dest: string) => {
-      await runFfmpeg([
-        '-y',
-        '-hide_banner',
-        '-loglevel',
-        'error',
-        '-i',
-        source,
-        '-ss',
-        Math.max(0, start).toFixed(3),
-        '-t',
-        duration,
-        '-map',
-        '0:v:0',
-        '-map',
-        '0:a:0?',
-        ...encoder,
-        '-c:a',
-        'aac',
-        '-b:a',
-        '192k',
-        '-ac',
-        '2',
-        '-movflags',
-        '+faststart',
-        dest
-      ])
+      emitJob(onProgress, title, steps, 'encode', 0.08, 'Encoding the loop…')
+      await runFfmpeg(
+        [
+          '-y',
+          '-hide_banner',
+          '-loglevel',
+          'error',
+          '-i',
+          source,
+          '-ss',
+          Math.max(0, start).toFixed(3),
+          '-t',
+          duration,
+          '-map',
+          '0:v:0',
+          '-map',
+          '0:a:0?',
+          ...encoder,
+          '-c:a',
+          'aac',
+          '-b:a',
+          '192k',
+          '-ac',
+          '2',
+          '-movflags',
+          '+faststart',
+          dest
+        ],
+        (seconds) => {
+          const ratio = Math.min(1, seconds / outDur)
+          emitJob(onProgress, title, steps, 'encode', 0.08 + ratio * 0.84, 'Encoding the loop…')
+        }
+      )
+      emitJob(onProgress, title, steps, 'save', 0.96, 'Saving…')
     }
 
     if (mode === 'new') {
@@ -809,6 +813,7 @@ export class Library {
       this.place(next)
       await this.save()
       this.indexItems([next])
+      emitJob(onProgress, title, steps, 'done', 1, 'Saved')
       return { item: next, replaced: false }
     }
 
@@ -838,6 +843,7 @@ export class Library {
     item.tags = tags
     await this.save()
     await this.refreshDerivatives([item.id])
+    emitJob(onProgress, title, steps, 'done', 1, 'Saved')
     return { item, replaced: true }
   }
 
@@ -850,7 +856,8 @@ export class Library {
     id: string,
     spans: DilationSpan[],
     mode: TrimMode,
-    interpolate = false
+    interpolate = false,
+    onProgress?: (progress: DilationProgress) => void
   ): Promise<{ item: MediaItem; replaced: boolean }> {
     const item = this.lookup(id)
     if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
@@ -869,32 +876,22 @@ export class Library {
       }
     }
 
-    const encoder = await h264EncodeArgs()
     const dir = path.dirname(source)
     const stem = path.parse(item.fileName).name
     const tags = [...new Set([...item.tags, normalizeTag(DILATION_TAG)])].sort()
+    const report = onProgress ?? (() => {})
 
     const encodeTo = async (dest: string) => {
-      await runFfmpeg([
-        '-y',
-        '-hide_banner',
-        '-loglevel',
-        'error',
-        '-i',
+      await encodeDilatedFile({
         source,
-        '-filter_complex',
-        dilationFilter(regions, duration, hasAudio, fps, Boolean(interpolate)),
-        '-map',
-        '[outv]',
-        ...(hasAudio ? ['-map', '[outa]'] : ['-an']),
-        ...encoder,
-        '-pix_fmt',
-        'yuv420p',
-        ...(hasAudio ? ['-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-ar', '48000'] : []),
-        '-movflags',
-        '+faststart',
-        dest
-      ])
+        dest,
+        regions,
+        duration,
+        hasAudio,
+        fps,
+        interpolate: Boolean(interpolate),
+        onProgress: report
+      })
     }
 
     if (mode === 'new') {
@@ -958,7 +955,8 @@ export class Library {
   async spliceVideo(
     id: string,
     spans: SpliceSpan[],
-    mode: TrimMode
+    mode: TrimMode,
+    onProgress?: (progress: DilationProgress) => void
   ): Promise<{ item: MediaItem; replaced: boolean }> {
     const item = this.lookup(id)
     if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
@@ -980,28 +978,44 @@ export class Library {
     const encoder = await h264EncodeArgs()
     const dir = path.dirname(source)
     const stem = path.parse(item.fileName).name
+    const outDur = regions.reduce((sum, region) => sum + (region.end - region.start), 0)
+    const title = 'Saving splice'
+    const steps = [
+      { id: 'read', label: 'Reading the video' },
+      { id: 'encode', label: 'Stitching the spans' },
+      { id: 'save', label: 'Saving' }
+    ]
+    emitJob(onProgress, title, steps, 'read', 0.04, 'Reading the video…')
 
     const encodeTo = async (dest: string) => {
-      await runFfmpeg([
-        '-y',
-        '-hide_banner',
-        '-loglevel',
-        'error',
-        '-i',
-        source,
-        '-filter_complex',
-        spliceFilter(regions, hasAudio, fps),
-        '-map',
-        '[outv]',
-        ...(hasAudio ? ['-map', '[outa]'] : ['-an']),
-        ...encoder,
-        '-pix_fmt',
-        'yuv420p',
-        ...(hasAudio ? ['-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-ar', '48000'] : []),
-        '-movflags',
-        '+faststart',
-        dest
-      ])
+      emitJob(onProgress, title, steps, 'encode', 0.08, 'Stitching the spans…')
+      await runFfmpeg(
+        [
+          '-y',
+          '-hide_banner',
+          '-loglevel',
+          'error',
+          '-i',
+          source,
+          '-filter_complex',
+          spliceFilter(regions, hasAudio, fps),
+          '-map',
+          '[outv]',
+          ...(hasAudio ? ['-map', '[outa]'] : ['-an']),
+          ...encoder,
+          '-pix_fmt',
+          'yuv420p',
+          ...(hasAudio ? ['-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-ar', '48000'] : []),
+          '-movflags',
+          '+faststart',
+          dest
+        ],
+        (seconds) => {
+          const ratio = outDur > 0 ? Math.min(1, seconds / outDur) : 0
+          emitJob(onProgress, title, steps, 'encode', 0.08 + ratio * 0.84, 'Stitching the spans…')
+        }
+      )
+      emitJob(onProgress, title, steps, 'save', 0.96, 'Saving…')
     }
 
     if (mode === 'new') {
@@ -1025,6 +1039,7 @@ export class Library {
       this.place(next)
       await this.save()
       this.indexItems([next])
+      emitJob(onProgress, title, steps, 'done', 1, 'Saved')
       return { item: next, replaced: false }
     }
 
@@ -1053,6 +1068,7 @@ export class Library {
     item.importedAt = new Date().toISOString()
     await this.save()
     await this.refreshDerivatives([item.id])
+    emitJob(onProgress, title, steps, 'done', 1, 'Saved')
     return { item, replaced: true }
   }
 
@@ -1065,7 +1081,8 @@ export class Library {
     start: number,
     end: number,
     options: GifOptions,
-    mode: TrimMode
+    mode: TrimMode,
+    onProgress?: (progress: DilationProgress) => void
   ): Promise<{ item: MediaItem; replaced: boolean }> {
     const item = this.lookup(id)
     if (!item || item.type !== 'video') throw new Error('Pick a video from the library')
@@ -1093,25 +1110,41 @@ export class Library {
     await fs.mkdir(pictures, { recursive: true })
     const stem = path.parse(item.fileName).name
     const tags = [...new Set([...item.tags, normalizeTag(GIF_TAG)])].sort()
+    const outDur = Math.max(0.1, end - start)
+    const title = 'Encoding GIF'
+    const steps = [
+      { id: 'read', label: 'Reading the video' },
+      { id: 'encode', label: 'Building the GIF' },
+      { id: 'save', label: 'Saving' }
+    ]
+    emitJob(onProgress, title, steps, 'read', 0.04, 'Reading the video…')
 
     const encodeTo = async (dest: string) => {
-      await runFfmpeg([
-        '-y',
-        '-hide_banner',
-        '-loglevel',
-        'error',
-        '-ss',
-        Math.max(0, start).toFixed(3),
-        '-t',
-        duration,
-        '-i',
-        source,
-        '-filter_complex',
-        filter,
-        '-loop',
-        loop ? '0' : '-1',
-        dest
-      ])
+      emitJob(onProgress, title, steps, 'encode', 0.08, 'Building the GIF…')
+      await runFfmpeg(
+        [
+          '-y',
+          '-hide_banner',
+          '-loglevel',
+          'error',
+          '-ss',
+          Math.max(0, start).toFixed(3),
+          '-t',
+          duration,
+          '-i',
+          source,
+          '-filter_complex',
+          filter,
+          '-loop',
+          loop ? '0' : '-1',
+          dest
+        ],
+        (seconds) => {
+          const ratio = Math.min(1, seconds / outDur)
+          emitJob(onProgress, title, steps, 'encode', 0.08 + ratio * 0.84, 'Building the GIF…')
+        }
+      )
+      emitJob(onProgress, title, steps, 'save', 0.96, 'Saving…')
     }
 
     if (mode === 'new') {
@@ -1135,6 +1168,7 @@ export class Library {
       this.place(next)
       await this.save()
       this.indexItems([next])
+      emitJob(onProgress, title, steps, 'done', 1, 'Saved')
       return { item: next, replaced: false }
     }
 
@@ -1163,6 +1197,7 @@ export class Library {
     item.tags = tags
     await this.save()
     await this.refreshDerivatives([item.id])
+    emitJob(onProgress, title, steps, 'done', 1, 'Saved')
     return { item, replaced: true }
   }
 

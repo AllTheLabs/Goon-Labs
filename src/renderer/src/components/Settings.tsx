@@ -99,6 +99,19 @@ const STILL_KEYS: [string, string][] = [
   ['Esc', 'Exit']
 ]
 
+const COMPARATOR_KEYS: [string, string][] = [
+  ['Space', 'Pause / resume'],
+  ['← / →', 'Previous / next pair'],
+  ['Hover a pane', 'Lean the mix toward that clip'],
+  ['P', 'Pink filter on / off'],
+  ['L', 'Endless desire'],
+  ['M', 'Mute'],
+  ['↑ / ↓', 'Volume'],
+  ['C', 'Webcam on / off'],
+  ['R', 'Start / stop recording'],
+  ['Esc', 'Exit']
+]
+
 const PIXEL_KEYS: [string, string][] = [
   ['Space', 'Pause / resume'],
   ['← / →', 'Previous / next video'],
@@ -276,6 +289,7 @@ export function Settings({ onClose }: SettingsProps) {
           <KeyTable title="Beat Bar" rows={BEAT_KEYS} />
           <KeyTable title="Pixel Perfection" rows={PIXEL_KEYS} />
           <KeyTable title="Hypno Station" rows={HYPNO_KEYS} />
+          <KeyTable title="Comparator" rows={COMPARATOR_KEYS} />
           <KeyTable title="Still Station" rows={STILL_KEYS} />
           <KeyTable title="Trimmer" rows={TRIMMER_KEYS} />
           <KeyTable title="Splicer" rows={SPLICER_KEYS} />

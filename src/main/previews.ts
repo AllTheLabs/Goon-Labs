@@ -20,8 +20,13 @@ const ENCODERS: { name: string; args: string[] }[] = [
   { name: 'libx264', args: ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26'] }
 ]
 
-export async function runFfmpeg(args: string[]): Promise<void> {
-  const result = await run(args)
+export async function runFfmpeg(
+  args: string[],
+  onTime?: (seconds: number) => void
+): Promise<void> {
+  const withProgress =
+    onTime && !args.includes('-progress') ? ['-progress', 'pipe:1', ...args] : args
+  const result = await run(withProgress, onTime)
   if (!result.ok) throw new Error(result.stderr.trim() || 'ffmpeg failed')
 }
 
@@ -60,7 +65,10 @@ export function runFfmpegRaw(args: string[]): Promise<{ ok: boolean; stderr: str
   return run(args)
 }
 
-function run(args: string[]): Promise<{ ok: boolean; stderr: string }> {
+function run(
+  args: string[],
+  onTime?: (seconds: number) => void
+): Promise<{ ok: boolean; stderr: string }> {
   return new Promise((resolve) => {
     if (!FFMPEG) return resolve({ ok: false, stderr: 'ffmpeg is not available' })
     const child = spawn(FFMPEG, args, { windowsHide: true })
@@ -71,6 +79,14 @@ function run(args: string[]): Promise<{ ok: boolean; stderr: string }> {
     }
     let stderr = ''
     child.stderr.on('data', (chunk) => (stderr = (stderr + chunk).slice(-12000)))
+    child.stdout?.on('data', (chunk) => {
+      if (!onTime) return
+      const text = String(chunk)
+      const us = /out_time_us=(\d+)/.exec(text)
+      const ms = /out_time_ms=(\d+)/.exec(text)
+      if (us) onTime(Number(us[1]) / 1_000_000)
+      else if (ms) onTime(Number(ms[1]) / 1_000)
+    })
     child.on('error', (err) => resolve({ ok: false, stderr: err.message }))
     child.on('close', (code) => resolve({ ok: code === 0, stderr }))
   })

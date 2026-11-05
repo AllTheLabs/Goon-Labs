@@ -1,5 +1,7 @@
 import type { MediaItem } from '../../shared/types'
 import { defaultLabLaunch } from './components/LabStartToggles'
+import { loadComparatorSettings } from './components/ComparatorSetup'
+import type { ComparatorSettings } from './components/ComparatorSetup'
 import { loadHypnoSettings } from './components/HypnoSetup'
 import type { HypnoSettings } from './components/HypnoSetup'
 import { loadPixelSettings } from './components/PixelSetup'
@@ -18,7 +20,7 @@ export interface GoonDiceSettings {
   experimental: boolean
 }
 
-export type FeelingLuckyLab = 'scroller' | 'queue' | 'pixel' | 'hypno' | 'still'
+export type FeelingLuckyLab = 'scroller' | 'queue' | 'pixel' | 'hypno' | 'still' | 'comparator'
 
 export type FeelingLuckyRoll =
   | { lab: 'scroller'; videos: MediaItem[]; tags: string[]; launch: LabPrefs }
@@ -26,6 +28,15 @@ export type FeelingLuckyRoll =
   | { lab: 'pixel'; entries: QueueEntry[]; settings: PixelSettings; launch: LabPrefs }
   | { lab: 'hypno'; entries: QueueEntry[]; settings: HypnoSettings; launch: LabPrefs }
   | { lab: 'still'; photos: MediaItem[]; tags: string[]; settings: StillSettings; launch: LabPrefs }
+  | {
+      lab: 'comparator'
+      left: MediaItem[]
+      right: MediaItem[]
+      leftTags: string[]
+      rightTags: string[]
+      settings: ComparatorSettings
+      launch: LabPrefs
+    }
 
 export function loadGoonDiceSettings(): GoonDiceSettings {
   try {
@@ -76,6 +87,37 @@ function asQueue(items: MediaItem[]): QueueEntry[] {
   return items.map((item, index) => ({ key: index + 1, item }))
 }
 
+function splitForComparator(videos: MediaItem[]): {
+  left: MediaItem[]
+  right: MediaItem[]
+  leftTags: string[]
+  rightTags: string[]
+} {
+  const tags = shuffle([...new Set(videos.flatMap((item) => item.tags))])
+  for (let i = 0; i < tags.length; i++) {
+    for (let j = i + 1; j < tags.length; j++) {
+      const left = videos.filter((item) => item.tags.includes(tags[i]))
+      const right = videos.filter((item) => item.tags.includes(tags[j]))
+      if (left.length > 0 && right.length > 0) {
+        return {
+          left: shuffle(left).slice(0, 36),
+          right: shuffle(right).slice(0, 36),
+          leftTags: [tags[i]],
+          rightTags: [tags[j]]
+        }
+      }
+    }
+  }
+  const shuffled = shuffle(videos)
+  const mid = Math.max(1, Math.floor(shuffled.length / 2))
+  return {
+    left: shuffled.slice(0, mid),
+    right: shuffled.slice(mid),
+    leftTags: [],
+    rightTags: []
+  }
+}
+
 export function rollFeelingLucky(
   items: MediaItem[],
   experimental: boolean
@@ -85,6 +127,7 @@ export function rollFeelingLucky(
   const labs: FeelingLuckyLab[] = []
   if (videos.length > 0) {
     labs.push('scroller', 'queue', 'hypno')
+    if (videos.length >= 2) labs.push('comparator')
     if (experimental) labs.push('pixel')
   }
   if (experimental && photos.length > 0) labs.push('still')
@@ -113,6 +156,16 @@ export function rollFeelingLucky(
   if (lab === 'scroller') {
     const pool = pickPool(videos, 64)
     return { lab, videos: pool.items, tags: pool.tags, launch }
+  }
+
+  if (lab === 'comparator') {
+    const split = splitForComparator(videos)
+    return {
+      lab,
+      ...split,
+      settings: { ...loadComparatorSettings(), endless: true },
+      launch
+    }
   }
 
   const pool = pickPool(videos, 36)

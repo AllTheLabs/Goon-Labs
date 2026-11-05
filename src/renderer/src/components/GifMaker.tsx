@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
-import { Image, Loader2, Pause, Play, X } from 'lucide-react'
-import type { GifFps, GifQuality, MediaItem, TrimMode } from '../../../shared/types'
+import { Image, Pause, Play, X } from 'lucide-react'
+import type { GifFps, GifQuality, JobProgress, MediaItem, TrimMode } from '../../../shared/types'
 import { GIF_FPS, GIF_QUALITIES } from '../../../shared/types'
 import { useTheme } from '../themes'
 import { formatTimecode, mediaUrl } from '../utils'
+import { clampSlide, EditorTimeline } from './EditorTimeline'
+import { UtilityProgress } from './UtilityProgress'
 
 const MIN_GAP = 0.1
 const LONG_HINT = 10
@@ -33,8 +34,6 @@ interface GifMakerProps {
 export function GifMaker({ item, onClose, onPickAnother, onSaved }: GifMakerProps) {
   const { copy } = useTheme()
   const videoRef = useRef<HTMLVideoElement>(null)
-  const trackRef = useRef<HTMLDivElement>(null)
-  const drag = useRef<'start' | 'end' | null>(null)
 
   const [duration, setDuration] = useState(0)
   const [current, setCurrent] = useState(0)
@@ -46,7 +45,9 @@ export function GifMaker({ item, onClose, onPickAnother, onSaved }: GifMakerProp
   const [loop, setLoop] = useState(true)
   const [confirm, setConfirm] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState<JobProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const src = mediaUrl(item)
 
   const range = Math.max(0, end - start)
 
@@ -57,6 +58,7 @@ export function GifMaker({ item, onClose, onPickAnother, onSaved }: GifMakerProp
     setStart(0)
     setEnd(Math.min(video.duration, 6))
     setCurrent(0)
+    if (video.currentTime < 0.02) video.currentTime = 0.05
   }
 
   useEffect(() => {
@@ -100,40 +102,25 @@ export function GifMaker({ item, onClose, onPickAnother, onSaved }: GifMakerProp
     }
   }
 
-  const pct = (time: number) => (duration > 0 ? `${(time / duration) * 100}%` : '0%')
-
-  const timeFromEvent = (clientX: number) => {
-    const track = trackRef.current
-    if (!track || duration <= 0) return 0
-    const rect = track.getBoundingClientRect()
-    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-    return ratio * duration
-  }
-
-  const onPointerDown = (which: 'start' | 'end') => (e: ReactPointerEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
+  const resizeKeep = (_id: string, edge: 'start' | 'end', time: number) => {
     videoRef.current?.pause()
-    drag.current = which
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-
-  const onPointerMove = (e: ReactPointerEvent) => {
-    if (!drag.current) return
-    const time = timeFromEvent(e.clientX)
-    if (drag.current === 'start') {
-      const next = Math.min(time, end - MIN_GAP)
-      setStart(Math.max(0, next))
-      seek(Math.max(0, next))
+    if (edge === 'start') {
+      const next = Math.max(0, Math.min(time, end - MIN_GAP))
+      setStart(next)
+      seek(next)
     } else {
-      const next = Math.max(time, start + MIN_GAP)
-      setEnd(Math.min(duration, next))
-      seek(Math.min(duration, next))
+      const next = Math.min(duration, Math.max(time, start + MIN_GAP))
+      setEnd(next)
+      seek(next)
     }
   }
 
-  const onPointerUp = () => {
-    drag.current = null
+  const moveKeep = (_id: string, nextStart: number, _nextEnd: number, previewTime: number) => {
+    videoRef.current?.pause()
+    const slid = clampSlide(nextStart, end - start, duration, [], start, end)
+    setStart(slid.start)
+    setEnd(slid.end)
+    seek(previewTime)
   }
 
   const pickQuality = (next: GifQuality) => {
@@ -150,6 +137,14 @@ export function GifMaker({ item, onClose, onPickAnother, onSaved }: GifMakerProp
         video.load()
       }
       setBusy(true)
+      setProgress({
+        title: 'Encoding GIF',
+        detail: 'Starting…',
+        percent: 0,
+        current: 0,
+        total: 0,
+        steps: []
+      })
       setError(null)
       setConfirm(false)
       try {
@@ -158,19 +153,23 @@ export function GifMaker({ item, onClose, onPickAnother, onSaved }: GifMakerProp
         onSaved(result.item, result.replaced)
       } catch (err) {
         setError((err as Error).message)
-        if (video) video.src = mediaUrl(item)
+        if (video) video.src = src
       } finally {
         setBusy(false)
+        setProgress(null)
       }
     },
-    [end, fps, item, loop, onSaved, quality, start]
+    [end, fps, item, loop, onSaved, quality, src, start]
   )
+
+  useEffect(() => window.api.onJobProgress(setProgress), [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
       if (e.key === 'Escape') {
         e.preventDefault()
+        if (busy) return
         if (confirm) setConfirm(false)
         else onClose()
       } else if (e.key === ' ' && !confirm && !busy) {
@@ -207,8 +206,9 @@ export function GifMaker({ item, onClose, onPickAnother, onSaved }: GifMakerProp
           key={item.id}
           ref={videoRef}
           className="trimmer-video"
-          src={mediaUrl(item)}
+          src={src}
           playsInline
+          preload="auto"
           onLoadedMetadata={onMeta}
         />
       </div>
@@ -222,36 +222,16 @@ export function GifMaker({ item, onClose, onPickAnother, onSaved }: GifMakerProp
           </span>
           <span>End {formatTimecode(end)}</span>
         </div>
-        <div
-          ref={trackRef}
-          className="trimmer-timeline"
-          onPointerDown={(e) => {
-            if ((e.target as HTMLElement).closest('.trimmer-handle')) return
-            const time = timeFromEvent(e.clientX)
-            seek(Math.min(end, Math.max(start, time)))
-          }}
-        >
-          <div className="trimmer-range" style={{ left: pct(start), width: pct(end - start) }} />
-          <div className="trimmer-playhead" style={{ left: pct(current) }} />
-          <button
-            className="trimmer-handle start"
-            style={{ left: pct(start) }}
-            onPointerDown={onPointerDown('start')}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            aria-label="Start of GIF"
-          />
-          <button
-            className="trimmer-handle end"
-            style={{ left: pct(end) }}
-            onPointerDown={onPointerDown('end')}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            aria-label="End of GIF"
-          />
-        </div>
+        <EditorTimeline
+          itemId={item.id}
+          duration={duration}
+          current={current}
+          disabled={busy}
+          spans={[{ id: 'keep', start, end, selected: true, label: 'GIF' }]}
+          onSeek={(time) => seek(Math.min(end, Math.max(start, time)))}
+          onResize={resizeKeep}
+          onMove={moveKeep}
+        />
         <div className="gif-controls">
           <div className="gif-control">
             <span className="field-label">Quality</span>
@@ -338,11 +318,7 @@ export function GifMaker({ item, onClose, onPickAnother, onSaved }: GifMakerProp
         </div>
       )}
 
-      {busy && (
-        <div className="busy">
-          <Loader2 className="spin" size={16} /> Encoding GIF…
-        </div>
-      )}
+      <UtilityProgress open={busy} progress={progress} title="Encoding GIF" />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   AppUpdateStatus,
+  JobProgress,
   DownloadJob,
   LibraryState,
   MediaApi,
@@ -83,10 +84,16 @@ const api: MediaApi = {
   loopVideo: (id, start, end, mode) => ipcRenderer.invoke('media:loop', id, start, end, mode),
   dilateVideo: (id, spans, mode, interpolate) =>
     ipcRenderer.invoke('media:dilate', id, spans, mode, interpolate),
+  onJobProgress: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: JobProgress) => listener(progress)
+    ipcRenderer.on('job:progress', handler)
+    return () => ipcRenderer.removeListener('job:progress', handler)
+  },
   spliceVideo: (id, spans, mode) => ipcRenderer.invoke('media:splice', id, spans, mode),
   makeGif: (id, start, end, options, mode) =>
     ipcRenderer.invoke('media:gif', id, start, end, options, mode),
-  getPixelModel: () => ipcRenderer.invoke('pixel:model')
+  getPixelModel: () => ipcRenderer.invoke('pixel:model'),
+  getFilmstrip: (id, count, duration) => ipcRenderer.invoke('media:filmstrip', id, count, duration)
 }
 
 contextBridge.exposeInMainWorld('api', api)

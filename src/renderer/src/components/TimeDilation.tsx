@@ -1,10 +1,11 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
-import { Clock, Loader2, Pause, Play, Plus, X } from 'lucide-react'
-import type { DilationFactor, DilationSpan, MediaItem, TrimMode } from '../../../shared/types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Clock, Pause, Play, Plus, X } from 'lucide-react'
+import type { DilationFactor, DilationSpan, JobProgress, MediaItem, TrimMode } from '../../../shared/types'
 import { DILATION_FACTORS } from '../../../shared/types'
 import { useTheme } from '../themes'
 import { formatTimecode, mediaUrl, plural } from '../utils'
+import { clampSlide, EditorTimeline } from './EditorTimeline'
+import { UtilityProgress } from './UtilityProgress'
 
 const MIN_GAP = 0.1
 const DEFAULT_FACTOR: DilationFactor = 2
@@ -52,8 +53,6 @@ function placeSpan(regions: Region[], duration: number, preferred: number): { st
 export function TimeDilation({ item, onClose, onPickAnother, onSaved }: TimeDilationProps) {
   const { copy } = useTheme()
   const videoRef = useRef<HTMLVideoElement>(null)
-  const trackRef = useRef<HTMLDivElement>(null)
-  const drag = useRef<{ id: string; which: 'start' | 'end' } | null>(null)
 
   const [duration, setDuration] = useState(0)
   const [current, setCurrent] = useState(0)
@@ -63,7 +62,9 @@ export function TimeDilation({ item, onClose, onPickAnother, onSaved }: TimeDila
   const [confirm, setConfirm] = useState(false)
   const [interpolate, setInterpolate] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState<JobProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const src = mediaUrl(item)
 
   const selected = regions.find((region) => region.id === selectedId) ?? null
   const outputDuration = useMemo(
@@ -78,6 +79,7 @@ export function TimeDilation({ item, onClose, onPickAnother, onSaved }: TimeDila
     setCurrent(0)
     const media = video as HTMLVideoElement & { preservesPitch?: boolean }
     if (media.preservesPitch !== undefined) media.preservesPitch = true
+    if (video.currentTime < 0.02) video.currentTime = 0.05
   }
 
   const applyRate = useCallback(
@@ -138,38 +140,18 @@ export function TimeDilation({ item, onClose, onPickAnother, onSaved }: TimeDila
     else video.pause()
   }
 
-  const pct = (time: number) => (duration > 0 ? `${(time / duration) * 100}%` : '0%')
-
-  const timeFromEvent = (clientX: number) => {
-    const track = trackRef.current
-    if (!track || duration <= 0) return 0
-    const rect = track.getBoundingClientRect()
-    const ratio = clamp((clientX - rect.left) / rect.width, 0, 1)
-    return ratio * duration
-  }
-
-  const onPointerDown = (id: string, which: 'start' | 'end') => (e: ReactPointerEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
+  const resizeRegion = (id: string, edge: 'start' | 'end', time: number) => {
     videoRef.current?.pause()
     setSelectedId(id)
-    drag.current = { id, which }
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-
-  const onPointerMove = (e: ReactPointerEvent) => {
-    if (!drag.current) return
-    const time = timeFromEvent(e.clientX)
-    const dragging = drag.current
     setRegions((current) =>
       current.map((region) => {
-        if (region.id !== dragging.id) return region
+        if (region.id !== id) return region
         const others = current.filter((entry) => entry.id !== region.id)
         const prev = others.filter((entry) => entry.end <= region.start + 0.001).sort((a, b) => b.end - a.end)[0]
         const next = others.filter((entry) => entry.start >= region.end - 0.001).sort((a, b) => a.start - b.start)[0]
         const minStart = prev ? prev.end : 0
         const maxEnd = next ? next.start : duration
-        if (dragging.which === 'start') {
+        if (edge === 'start') {
           const start = clamp(time, minStart, region.end - MIN_GAP)
           seek(start)
           return { ...region, start }
@@ -181,8 +163,25 @@ export function TimeDilation({ item, onClose, onPickAnother, onSaved }: TimeDila
     )
   }
 
-  const onPointerUp = () => {
-    drag.current = null
+  const moveRegion = (id: string, start: number, _end: number, previewTime: number) => {
+    videoRef.current?.pause()
+    setSelectedId(id)
+    setRegions((current) =>
+      current.map((region) => {
+        if (region.id !== id) return region
+        const others = current.filter((entry) => entry.id !== region.id)
+        const next = clampSlide(
+          start,
+          region.end - region.start,
+          duration,
+          others,
+          region.start,
+          region.end
+        )
+        seek(previewTime)
+        return { ...region, ...next }
+      })
+    )
   }
 
   const addRegion = () => {
@@ -221,6 +220,14 @@ export function TimeDilation({ item, onClose, onPickAnother, onSaved }: TimeDila
         video.load()
       }
       setBusy(true)
+      setProgress({
+        title: interpolate ? 'Interpolating frames' : 'Saving time dilation',
+        detail: 'Starting…',
+        percent: 0,
+        current: 0,
+        total: 0,
+        steps: []
+      })
       setError(null)
       setConfirm(false)
       try {
@@ -230,19 +237,23 @@ export function TimeDilation({ item, onClose, onPickAnother, onSaved }: TimeDila
         onSaved(result.item, result.replaced)
       } catch (err) {
         setError((err as Error).message)
-        if (video) video.src = mediaUrl(item)
+        if (video) video.src = src
       } finally {
         setBusy(false)
+        setProgress(null)
       }
     },
-    [interpolate, item, onSaved, regions]
+    [interpolate, item, onSaved, regions, src]
   )
+
+  useEffect(() => window.api.onJobProgress(setProgress), [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
       if (e.key === 'Escape') {
         e.preventDefault()
+        if (busy) return
         if (confirm) setConfirm(false)
         else onClose()
       } else if (e.key === ' ' && !confirm && !busy) {
@@ -282,8 +293,9 @@ export function TimeDilation({ item, onClose, onPickAnother, onSaved }: TimeDila
           key={item.id}
           ref={videoRef}
           className="trimmer-video"
-          src={mediaUrl(item)}
+          src={src}
           playsInline
+          preload="auto"
           onLoadedMetadata={onMeta}
         />
       </div>
@@ -298,56 +310,23 @@ export function TimeDilation({ item, onClose, onPickAnother, onSaved }: TimeDila
           <span>Output {formatTimecode(outputDuration)}</span>
         </div>
         <div className="dilation-timeline-row">
-          <div
-            ref={trackRef}
-            className="trimmer-timeline"
-            onPointerDown={(e) => {
-              if ((e.target as HTMLElement).closest('.trimmer-handle, .dilation-range')) return
-              setSelectedId(null)
-              seek(timeFromEvent(e.clientX))
-            }}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-          >
-            {regions.map((region) => (
-              <div
-                key={region.id}
-                className={`dilation-range ${region.id === selectedId ? 'selected' : ''}`}
-                style={{ left: pct(region.start), width: pct(region.end - region.start) }}
-                onPointerDown={(e) => {
-                  e.stopPropagation()
-                  setSelectedId(region.id)
-                  seek(timeFromEvent(e.clientX))
-                }}
-              >
-                <span className="dilation-badge">{region.factor}x</span>
-              </div>
-            ))}
-            <div className="trimmer-playhead" style={{ left: pct(current) }} />
-            {regions.map((region) => (
-              <Fragment key={`${region.id}-handles`}>
-                <button
-                  className="trimmer-handle start"
-                  style={{ left: pct(region.start) }}
-                  onPointerDown={onPointerDown(region.id, 'start')}
-                  onPointerMove={onPointerMove}
-                  onPointerUp={onPointerUp}
-                  onPointerCancel={onPointerUp}
-                  aria-label="Start of time dilation"
-                />
-                <button
-                  className="trimmer-handle end"
-                  style={{ left: pct(region.end) }}
-                  onPointerDown={onPointerDown(region.id, 'end')}
-                  onPointerMove={onPointerMove}
-                  onPointerUp={onPointerUp}
-                  onPointerCancel={onPointerUp}
-                  aria-label="End of time dilation"
-                />
-              </Fragment>
-            ))}
-          </div>
+          <EditorTimeline
+            itemId={item.id}
+            duration={duration}
+            current={current}
+            disabled={busy}
+            spans={regions.map((region) => ({
+              id: region.id,
+              start: region.start,
+              end: region.end,
+              label: `${region.factor}x`,
+              selected: region.id === selectedId
+            }))}
+            onSeek={seek}
+            onSelect={setSelectedId}
+            onResize={resizeRegion}
+            onMove={moveRegion}
+          />
           <button
             className="dilation-add"
             onClick={addRegion}
@@ -444,12 +423,11 @@ export function TimeDilation({ item, onClose, onPickAnother, onSaved }: TimeDila
         </div>
       )}
 
-      {busy && (
-        <div className="busy">
-          <Loader2 className="spin" size={16} />{' '}
-          {interpolate ? 'Interpolating frames…' : 'Saving time dilation…'}
-        </div>
-      )}
+      <UtilityProgress
+        open={busy}
+        progress={progress}
+        title={interpolate ? 'Interpolating frames' : 'Saving time dilation'}
+      />
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import {
   Clapperboard,
   Clock,
+  Columns2,
   Combine,
   Disc3,
   Droplet,
@@ -95,6 +96,7 @@ export interface ThemeCopy {
   pixelPerfection: string
   hypnoStation: string
   stillStation: string
+  comparator: string
   utilitiesHeading: string
   trimmer: string
   splicer: string
@@ -122,6 +124,7 @@ export interface ThemeIcons {
   pixelPerfection: Icon
   hypnoStation: Icon
   stillStation: Icon
+  comparator: Icon
   trimmer: Icon
   splicer: Icon
   goonLoop: Icon
@@ -165,6 +168,7 @@ const DEFAULT_COPY: ThemeCopy = {
   pixelPerfection: 'Pixel Perfection',
   hypnoStation: 'Hypno Station',
   stillStation: 'Still Station',
+  comparator: 'Comparator',
   utilitiesHeading: 'Utilities',
   trimmer: 'Trimmer',
   splicer: 'Splicer',
@@ -192,6 +196,7 @@ const DEFAULT_ICONS: ThemeIcons = {
   pixelPerfection: Grid3x3,
   hypnoStation: HypnoSpiral,
   stillStation: Aperture,
+  comparator: Columns2,
   trimmer: Scissors,
   splicer: Combine,
   goonLoop: Repeat,

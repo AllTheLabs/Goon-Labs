@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
-import { Loader2, Pause, Play, Repeat, X } from 'lucide-react'
-import type { MediaItem, TrimMode } from '../../../shared/types'
+import { Pause, Play, Repeat, X } from 'lucide-react'
+import type { JobProgress, MediaItem, TrimMode } from '../../../shared/types'
 import { findSeamlessLoop } from '../goonLoop'
 import { useTheme } from '../themes'
 import { formatTimecode, mediaUrl } from '../utils'
+import { clampSlide, EditorTimeline } from './EditorTimeline'
+import { UtilityProgress } from './UtilityProgress'
 
 const MIN_GAP = 0.1
 const GIF_MAX = 60
@@ -32,8 +33,6 @@ function qualityLabel(quality: number): string {
 export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProps) {
   const { copy } = useTheme()
   const videoRef = useRef<HTMLVideoElement>(null)
-  const trackRef = useRef<HTMLDivElement>(null)
-  const drag = useRef<'start' | 'end' | null>(null)
   const findAbort = useRef<AbortController | null>(null)
 
   const [duration, setDuration] = useState(0)
@@ -44,9 +43,10 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
   const [confirm, setConfirm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [finding, setFinding] = useState(false)
-  const [findProgress, setFindProgress] = useState(0)
+  const [progress, setProgress] = useState<JobProgress | null>(null)
   const [quality, setQuality] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const src = mediaUrl(item)
 
   const range = Math.max(0, end - start)
 
@@ -60,6 +60,7 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
     setCurrent(span.start)
     video.currentTime = span.start
     setQuality(null)
+    if (video.currentTime < 0.02) video.currentTime = 0.05
   }
 
   useEffect(() => {
@@ -105,41 +106,27 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
     }
   }
 
-  const pct = (time: number) => (duration > 0 ? `${(time / duration) * 100}%` : '0%')
-
-  const timeFromEvent = (clientX: number) => {
-    const track = trackRef.current
-    if (!track || duration <= 0) return 0
-    const rect = track.getBoundingClientRect()
-    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-    return ratio * duration
-  }
-
-  const onPointerDown = (which: 'start' | 'end') => (e: ReactPointerEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
+  const resizeKeep = (_id: string, edge: 'start' | 'end', time: number) => {
     videoRef.current?.pause()
-    drag.current = which
     setQuality(null)
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-
-  const onPointerMove = (e: ReactPointerEvent) => {
-    if (!drag.current) return
-    const time = timeFromEvent(e.clientX)
-    if (drag.current === 'start') {
-      const next = Math.min(time, end - MIN_GAP)
-      setStart(Math.max(0, next))
-      seek(Math.max(0, next))
+    if (edge === 'start') {
+      const next = Math.max(0, Math.min(time, end - MIN_GAP))
+      setStart(next)
+      seek(next)
     } else {
-      const next = Math.max(time, start + MIN_GAP)
-      setEnd(Math.min(duration, next))
-      seek(Math.min(duration, next))
+      const next = Math.min(duration, Math.max(time, start + MIN_GAP))
+      setEnd(next)
+      seek(next)
     }
   }
 
-  const onPointerUp = () => {
-    drag.current = null
+  const moveKeep = (_id: string, nextStart: number, _nextEnd: number, previewTime: number) => {
+    videoRef.current?.pause()
+    setQuality(null)
+    const slid = clampSlide(nextStart, end - start, duration, [], start, end)
+    setStart(slid.start)
+    setEnd(slid.end)
+    seek(previewTime)
   }
 
   const findLoop = async () => {
@@ -151,10 +138,39 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
     findAbort.current = controller
     const restore = video.currentTime
     setFinding(true)
-    setFindProgress(0)
+    setProgress({
+      title: 'Finding a loop',
+      detail: 'Sampling frames…',
+      percent: 0,
+      current: 0,
+      total: 0,
+      steps: [
+        { id: 'sample', label: 'Sampling frames', state: 'active' },
+        { id: 'match', label: 'Picking the wrap', state: 'pending' }
+      ]
+    })
     setError(null)
     try {
-      const match = await findSeamlessLoop(video, start, end, setFindProgress, controller.signal)
+      const match = await findSeamlessLoop(
+        video,
+        start,
+        end,
+        (ratio) => {
+          const sampling = ratio < 0.92
+          setProgress({
+            title: 'Finding a loop',
+            detail: sampling ? 'Sampling frames…' : 'Picking the wrap…',
+            percent: ratio,
+            current: 0,
+            total: 0,
+            steps: [
+              { id: 'sample', label: 'Sampling frames', state: sampling ? 'active' : 'done' },
+              { id: 'match', label: 'Picking the wrap', state: sampling ? 'pending' : 'active' }
+            ]
+          })
+        },
+        controller.signal
+      )
       setStart(match.start)
       setEnd(match.end)
       setQuality(match.quality)
@@ -168,6 +184,7 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
     } finally {
       if (findAbort.current === controller) findAbort.current = null
       setFinding(false)
+      setProgress(null)
     }
   }
 
@@ -180,6 +197,14 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
         video.load()
       }
       setBusy(true)
+      setProgress({
+        title: 'Saving Goon Loop',
+        detail: 'Starting…',
+        percent: 0,
+        current: 0,
+        total: 0,
+        steps: []
+      })
       setError(null)
       setConfirm(false)
       try {
@@ -191,19 +216,23 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
         onSaved(result.item, result.replaced)
       } catch (err) {
         setError((err as Error).message)
-        if (video) video.src = mediaUrl(item)
+        if (video) video.src = src
       } finally {
         setBusy(false)
+        setProgress(null)
       }
     },
-    [end, item, onSaved, start]
+    [end, item, onSaved, src, start]
   )
+
+  useEffect(() => window.api.onJobProgress(setProgress), [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
       if (e.key === 'Escape') {
         e.preventDefault()
+        if (busy) return
         if (finding) findAbort.current?.abort()
         else if (confirm) setConfirm(false)
         else onClose()
@@ -233,7 +262,7 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
           <button className="btn btn-ghost btn-sm" onClick={onPickAnother} disabled={busy || finding}>
             Change video
           </button>
-          <button className="viewer-btn" onClick={onClose} aria-label="Close" disabled={busy}>
+          <button className="viewer-btn" onClick={onClose} aria-label="Close" disabled={busy || finding}>
             <X size={20} />
           </button>
         </div>
@@ -244,9 +273,10 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
           key={item.id}
           ref={videoRef}
           className="trimmer-video"
-          src={mediaUrl(item)}
+          src={src}
           crossOrigin="anonymous"
           playsInline
+          preload="auto"
           onLoadedMetadata={onMeta}
         />
       </div>
@@ -257,36 +287,16 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
           <span>Loop {formatTimecode(range)}</span>
           <span>Out {formatTimecode(end)}</span>
         </div>
-        <div
-          ref={trackRef}
-          className="trimmer-timeline"
-          onPointerDown={(e) => {
-            if ((e.target as HTMLElement).closest('.trimmer-handle')) return
-            const time = timeFromEvent(e.clientX)
-            seek(Math.min(end, Math.max(start, time)))
-          }}
-        >
-          <div className="trimmer-range" style={{ left: pct(start), width: pct(end - start) }} />
-          <div className="trimmer-playhead" style={{ left: pct(current) }} />
-          <button
-            className="trimmer-handle start"
-            style={{ left: pct(start) }}
-            onPointerDown={onPointerDown('start')}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            aria-label="Start of loop"
-          />
-          <button
-            className="trimmer-handle end"
-            style={{ left: pct(end) }}
-            onPointerDown={onPointerDown('end')}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            aria-label="End of loop"
-          />
-        </div>
+        <EditorTimeline
+          itemId={item.id}
+          duration={duration}
+          current={current}
+          disabled={busy || finding}
+          spans={[{ id: 'keep', start, end, selected: true, label: 'Loop' }]}
+          onSeek={(time) => seek(Math.min(end, Math.max(start, time)))}
+          onResize={resizeKeep}
+          onMove={moveKeep}
+        />
         <div className="trimmer-actions">
           <button className="scroller-btn" onClick={togglePlay} title="Play / pause (Space)" disabled={busy || finding || duration === 0}>
             {paused ? <Play size={16} fill="currentColor" /> : <Pause size={16} />}
@@ -354,12 +364,11 @@ export function GoonLoop({ item, onClose, onPickAnother, onSaved }: GoonLoopProp
         </div>
       )}
 
-      {(busy || finding) && (
-        <div className="busy">
-          <Loader2 className="spin" size={16} />{' '}
-          {finding ? `Finding a loop… ${Math.round(findProgress * 100)}%` : 'Saving loop…'}
-        </div>
-      )}
+      <UtilityProgress
+        open={busy || finding}
+        progress={progress}
+        title={finding ? 'Finding a loop' : 'Saving Goon Loop'}
+      />
     </div>
   )
 }

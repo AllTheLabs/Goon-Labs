@@ -149,6 +149,26 @@ export interface DilationSpan {
   factor: DilationFactor
 }
 
+export interface DilationProgressStep {
+  id: string
+  label: string
+  state: 'pending' | 'active' | 'done'
+}
+
+/** Live status while a utility is encoding or scanning. */
+export interface DilationProgress {
+  title: string
+  detail: string
+  /** 0–1 overall. */
+  percent: number
+  current: number
+  total: number
+  steps: DilationProgressStep[]
+}
+
+export type JobProgress = DilationProgress
+export type JobProgressStep = DilationProgressStep
+
 /** One keep-span on a Splicer timeline. */
 export interface SpliceSpan {
   start: number
@@ -225,8 +245,11 @@ export interface MediaApi {
   trimVideo(id: string, start: number, end: number, mode: TrimMode): Promise<TrimResult>
   loopVideo(id: string, start: number, end: number, mode: TrimMode): Promise<TrimResult>
   dilateVideo(id: string, spans: DilationSpan[], mode: TrimMode, interpolate: boolean): Promise<TrimResult>
+  onJobProgress(listener: (progress: JobProgress) => void): () => void
   spliceVideo(id: string, spans: SpliceSpan[], mode: TrimMode): Promise<TrimResult>
   makeGif(id: string, start: number, end: number, options: GifOptions, mode: TrimMode): Promise<TrimResult>
   /** NudeNet ONNX weights for on-device Pixel Perfection detection. */
   getPixelModel(): Promise<ArrayBuffer>
+  /** Evenly spaced JPEG stills for an editor timeline, using the player's duration. */
+  getFilmstrip(id: string, count: number, duration: number): Promise<string[]>
 }

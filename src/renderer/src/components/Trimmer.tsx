@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
-import { Loader2, Pause, Play, Scissors, X } from 'lucide-react'
-import type { MediaItem, TrimMode } from '../../../shared/types'
+import { Pause, Play, Scissors, X } from 'lucide-react'
+import type { JobProgress, MediaItem, TrimMode } from '../../../shared/types'
 import { useTheme } from '../themes'
 import { formatTimecode, mediaUrl } from '../utils'
+import { clampSlide, EditorTimeline } from './EditorTimeline'
+import { UtilityProgress } from './UtilityProgress'
 
 const MIN_GAP = 0.1
 
@@ -17,8 +18,6 @@ interface TrimmerProps {
 export function Trimmer({ item, onClose, onPickAnother, onSaved }: TrimmerProps) {
   const { copy } = useTheme()
   const videoRef = useRef<HTMLVideoElement>(null)
-  const trackRef = useRef<HTMLDivElement>(null)
-  const drag = useRef<'start' | 'end' | null>(null)
 
   const [duration, setDuration] = useState(0)
   const [current, setCurrent] = useState(0)
@@ -27,7 +26,9 @@ export function Trimmer({ item, onClose, onPickAnother, onSaved }: TrimmerProps)
   const [paused, setPaused] = useState(true)
   const [confirm, setConfirm] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState<JobProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const src = mediaUrl(item)
 
   const range = Math.max(0, end - start)
 
@@ -38,6 +39,7 @@ export function Trimmer({ item, onClose, onPickAnother, onSaved }: TrimmerProps)
     setStart(0)
     setEnd(video.duration)
     setCurrent(0)
+    if (video.currentTime < 0.02) video.currentTime = 0.05
   }
 
   useEffect(() => {
@@ -81,40 +83,25 @@ export function Trimmer({ item, onClose, onPickAnother, onSaved }: TrimmerProps)
     }
   }
 
-  const pct = (time: number) => (duration > 0 ? `${(time / duration) * 100}%` : '0%')
-
-  const timeFromEvent = (clientX: number) => {
-    const track = trackRef.current
-    if (!track || duration <= 0) return 0
-    const rect = track.getBoundingClientRect()
-    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-    return ratio * duration
-  }
-
-  const onPointerDown = (which: 'start' | 'end') => (e: ReactPointerEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
+  const resizeKeep = (_id: string, edge: 'start' | 'end', time: number) => {
     videoRef.current?.pause()
-    drag.current = which
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-
-  const onPointerMove = (e: ReactPointerEvent) => {
-    if (!drag.current) return
-    const time = timeFromEvent(e.clientX)
-    if (drag.current === 'start') {
-      const next = Math.min(time, end - MIN_GAP)
-      setStart(Math.max(0, next))
-      seek(Math.max(0, next))
+    if (edge === 'start') {
+      const next = Math.max(0, Math.min(time, end - MIN_GAP))
+      setStart(next)
+      seek(next)
     } else {
-      const next = Math.max(time, start + MIN_GAP)
-      setEnd(Math.min(duration, next))
-      seek(Math.min(duration, next))
+      const next = Math.min(duration, Math.max(time, start + MIN_GAP))
+      setEnd(next)
+      seek(next)
     }
   }
 
-  const onPointerUp = () => {
-    drag.current = null
+  const moveKeep = (_id: string, nextStart: number, _nextEnd: number, previewTime: number) => {
+    videoRef.current?.pause()
+    const slid = clampSlide(nextStart, end - start, duration, [], start, end)
+    setStart(slid.start)
+    setEnd(slid.end)
+    seek(previewTime)
   }
 
   const save = useCallback(
@@ -126,6 +113,14 @@ export function Trimmer({ item, onClose, onPickAnother, onSaved }: TrimmerProps)
         video.load()
       }
       setBusy(true)
+      setProgress({
+        title: 'Saving trim',
+        detail: 'Starting…',
+        percent: 0,
+        current: 0,
+        total: 0,
+        steps: []
+      })
       setError(null)
       setConfirm(false)
       try {
@@ -134,19 +129,23 @@ export function Trimmer({ item, onClose, onPickAnother, onSaved }: TrimmerProps)
         onSaved(result.item, result.replaced)
       } catch (err) {
         setError((err as Error).message)
-        if (video) video.src = mediaUrl(item)
+        if (video) video.src = src
       } finally {
         setBusy(false)
+        setProgress(null)
       }
     },
-    [end, item, onSaved, start]
+    [end, item, onSaved, src, start]
   )
+
+  useEffect(() => window.api.onJobProgress(setProgress), [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
       if (e.key === 'Escape') {
         e.preventDefault()
+        if (busy) return
         if (confirm) setConfirm(false)
         else onClose()
       } else if (e.key === ' ' && !confirm && !busy) {
@@ -183,8 +182,9 @@ export function Trimmer({ item, onClose, onPickAnother, onSaved }: TrimmerProps)
           key={item.id}
           ref={videoRef}
           className="trimmer-video"
-          src={mediaUrl(item)}
+          src={src}
           playsInline
+          preload="auto"
           onLoadedMetadata={onMeta}
         />
       </div>
@@ -195,36 +195,16 @@ export function Trimmer({ item, onClose, onPickAnother, onSaved }: TrimmerProps)
           <span>Keep {formatTimecode(range)}</span>
           <span>End {formatTimecode(end)}</span>
         </div>
-        <div
-          ref={trackRef}
-          className="trimmer-timeline"
-          onPointerDown={(e) => {
-            if ((e.target as HTMLElement).closest('.trimmer-handle')) return
-            const time = timeFromEvent(e.clientX)
-            seek(Math.min(end, Math.max(start, time)))
-          }}
-        >
-          <div className="trimmer-range" style={{ left: pct(start), width: pct(end - start) }} />
-          <div className="trimmer-playhead" style={{ left: pct(current) }} />
-          <button
-            className="trimmer-handle start"
-            style={{ left: pct(start) }}
-            onPointerDown={onPointerDown('start')}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            aria-label="Start of trim"
-          />
-          <button
-            className="trimmer-handle end"
-            style={{ left: pct(end) }}
-            onPointerDown={onPointerDown('end')}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            aria-label="End of trim"
-          />
-        </div>
+        <EditorTimeline
+          itemId={item.id}
+          duration={duration}
+          current={current}
+          disabled={busy}
+          spans={[{ id: 'keep', start, end, selected: true, label: 'Keep' }]}
+          onSeek={(time) => seek(Math.min(end, Math.max(start, time)))}
+          onResize={resizeKeep}
+          onMove={moveKeep}
+        />
         <div className="trimmer-actions">
           <button className="scroller-btn" onClick={togglePlay} title="Play / pause (Space)" disabled={busy || duration === 0}>
             {paused ? <Play size={16} fill="currentColor" /> : <Pause size={16} />}
@@ -274,11 +254,7 @@ export function Trimmer({ item, onClose, onPickAnother, onSaved }: TrimmerProps)
         </div>
       )}
 
-      {busy && (
-        <div className="busy">
-          <Loader2 className="spin" size={16} /> Saving trim…
-        </div>
-      )}
+      <UtilityProgress open={busy} progress={progress} title="Saving trim" />
     </div>
   )
 }

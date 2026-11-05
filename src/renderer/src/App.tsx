@@ -38,6 +38,9 @@ import { ScrollerSetup } from './components/ScrollerSetup'
 import { HypnoPlayer } from './components/HypnoPlayer'
 import { HypnoSetup } from './components/HypnoSetup'
 import type { HypnoSettings } from './components/HypnoSetup'
+import { ComparatorPlayer } from './components/ComparatorPlayer'
+import { ComparatorSetup } from './components/ComparatorSetup'
+import type { ComparatorSettings } from './components/ComparatorSetup'
 import { StillPlayer } from './components/StillPlayer'
 import { StillSetup } from './components/StillSetup'
 import type { StillSettings } from './components/StillSetup'
@@ -143,6 +146,18 @@ export function App() {
   const [still, setStill] = useState<
     | 'setup'
     | { photos: MediaItem[]; tags: string[]; settings: StillSettings; launch: LabPrefs }
+    | null
+  >(null)
+  const [comparator, setComparator] = useState<
+    | 'setup'
+    | {
+        left: MediaItem[]
+        right: MediaItem[]
+        leftTags: string[]
+        rightTags: string[]
+        settings: ComparatorSettings
+        launch: LabPrefs
+      }
     | null
   >(null)
   const [trimmer, setTrimmer] = useState<'pick' | MediaItem | null>(null)
@@ -637,12 +652,14 @@ export function App() {
   const closePixel = useCallback(() => setPixel(null), [])
   const closeHypno = useCallback(() => setHypno(null), [])
   const closeStill = useCallback(() => setStill(null), [])
+  const closeComparator = useCallback(() => setComparator(null), [])
   const endLab = useCallback((next: LabRecapData) => {
     setScroller(null)
     setQueue(null)
     setPixel(null)
     setHypno(null)
     setStill(null)
+    setComparator(null)
     setRecap(next)
   }, [])
   const closeTrimmer = useCallback(() => setTrimmer(null), [])
@@ -669,11 +686,21 @@ export function App() {
       setPixel(null)
       setHypno(null)
       setStill(null)
+      setComparator(null)
       if (result.lab === 'scroller') setScroller({ videos: result.videos, tags: result.tags, launch: result.launch })
       else if (result.lab === 'queue') setQueue({ entries: result.entries, settings: result.settings, launch: result.launch })
       else if (result.lab === 'pixel') setPixel({ entries: result.entries, settings: result.settings, launch: result.launch })
       else if (result.lab === 'hypno') setHypno({ entries: result.entries, settings: result.settings, launch: result.launch })
-      else setStill({ photos: result.photos, tags: result.tags, settings: result.settings, launch: result.launch })
+      else if (result.lab === 'comparator') {
+        setComparator({
+          left: result.left,
+          right: result.right,
+          leftTags: result.leftTags,
+          rightTags: result.rightTags,
+          settings: result.settings,
+          launch: result.launch
+        })
+      } else setStill({ photos: result.photos, tags: result.tags, settings: result.settings, launch: result.launch })
     },
     [items, notify]
   )
@@ -850,15 +877,17 @@ export function App() {
   const activeLab =
     still && still !== 'setup'
       ? 'Still Station'
-      : hypno && hypno !== 'setup'
-        ? 'Hypno Station'
-        : pixel && pixel !== 'setup'
-          ? 'Pixel Perfection'
-          : queue && queue !== 'setup'
-            ? 'Beat Bar'
-            : scroller && scroller !== 'setup'
-              ? 'Scroller'
-              : null
+      : comparator && comparator !== 'setup'
+        ? 'Comparator'
+        : hypno && hypno !== 'setup'
+          ? 'Hypno Station'
+          : pixel && pixel !== 'setup'
+            ? 'Pixel Perfection'
+            : queue && queue !== 'setup'
+              ? 'Beat Bar'
+              : scroller && scroller !== 'setup'
+                ? 'Scroller'
+                : null
   useDiscordPresence(activeLab)
   const update = useAppUpdate()
   const [checkingUpdate, setCheckingUpdate] = useState(false)
@@ -960,6 +989,7 @@ export function App() {
         onOpenQueue={() => setQueue('setup')}
         onOpenPixel={() => setPixel('setup')}
         onOpenHypno={() => setHypno('setup')}
+        onOpenComparator={() => setComparator('setup')}
         onOpenStill={() => setStill('setup')}
         onOpenTrimmer={() => setTrimmer('pick')}
         onOpenSplicer={() => setSplicer('pick')}
@@ -1339,6 +1369,28 @@ export function App() {
           entries={hypno.entries}
           settings={hypno.settings}
           launch={hypno.launch}
+          onExit={endLab}
+        />
+      )}
+
+      {comparator === 'setup' && (
+        <ComparatorSetup
+          videos={items.filter((item) => item.type === 'video')}
+          initialTags={activeTags}
+          onStart={(left, right, leftTags, rightTags, settings, launch) =>
+            setComparator({ left, right, leftTags, rightTags, settings, launch })
+          }
+          onClose={closeComparator}
+        />
+      )}
+      {comparator && comparator !== 'setup' && (
+        <ComparatorPlayer
+          left={comparator.left}
+          right={comparator.right}
+          leftTags={comparator.leftTags}
+          rightTags={comparator.rightTags}
+          settings={comparator.settings}
+          launch={comparator.launch}
           onExit={endLab}
         />
       )}

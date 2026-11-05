@@ -1,7 +1,15 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { existsSync, promises as fs, readFileSync } from 'node:fs'
 import path from 'node:path'
-import type { DilationSpan, DiscordActivity, GifOptions, ImportSource, SpliceSpan, TrimMode } from '../shared/types'
+import type {
+  DilationProgress,
+  DilationSpan,
+  DiscordActivity,
+  GifOptions,
+  ImportSource,
+  SpliceSpan,
+  TrimMode
+} from '../shared/types'
 import { dismissChangelog, pendingChangelog } from './changelog'
 import { checkForUpdate, getUpdateStatus, installUpdate, onUpdateStatus } from './updater'
 import { DownloadManager } from './downloads'
@@ -9,6 +17,7 @@ import { Library } from './library'
 import { IMAGE_EXTENSIONS, VIDEO_EXTENSIONS } from './mediaTypes'
 import { loadPixelModel } from './pixelModel'
 import { handleMediaProtocol, registerMediaScheme } from './protocol'
+import { extractFilmstrip } from './thumbs'
 import { installCapturePermissions, SessionRecording, windowSourceId } from './sessionCapture'
 import { setDiscordActivity, setDiscordEnabled, setDiscordStreak, stopDiscordPresence } from './discordPresence'
 import { localDayKey, msUntilNextLocalMidnight, nextGoonStreak, yesterdayKey } from './goonStreak'
@@ -290,28 +299,41 @@ function registerIpc(): void {
     app.relaunch()
     app.exit(0)
   })
-  ipcMain.handle('media:trim', (_event, id: string, start: number, end: number, mode: TrimMode) =>
-    requireLibrary().trimVideo(id, start, end, mode)
+  const sendJobProgress = (event: IpcMainInvokeEvent) => (progress: DilationProgress) => {
+    if (!event.sender.isDestroyed()) event.sender.send('job:progress', progress)
+  }
+  ipcMain.handle('media:trim', (event, id: string, start: number, end: number, mode: TrimMode) =>
+    requireLibrary().trimVideo(id, start, end, mode, sendJobProgress(event))
   )
-  ipcMain.handle('media:loop', (_event, id: string, start: number, end: number, mode: TrimMode) =>
-    requireLibrary().loopVideo(id, start, end, mode)
+  ipcMain.handle('media:loop', (event, id: string, start: number, end: number, mode: TrimMode) =>
+    requireLibrary().loopVideo(id, start, end, mode, sendJobProgress(event))
   )
   ipcMain.handle(
     'media:dilate',
-    (_event, id: string, spans: DilationSpan[], mode: TrimMode, interpolate: boolean) =>
-      requireLibrary().dilateVideo(id, spans, mode, interpolate)
+    (event, id: string, spans: DilationSpan[], mode: TrimMode, interpolate: boolean) =>
+      requireLibrary().dilateVideo(id, spans, mode, interpolate, sendJobProgress(event))
   )
-  ipcMain.handle('media:splice', (_event, id: string, spans: SpliceSpan[], mode: TrimMode) =>
-    requireLibrary().spliceVideo(id, spans, mode)
+  ipcMain.handle('media:splice', (event, id: string, spans: SpliceSpan[], mode: TrimMode) =>
+    requireLibrary().spliceVideo(id, spans, mode, sendJobProgress(event))
   )
   ipcMain.handle(
     'media:gif',
-    (_event, id: string, start: number, end: number, options: GifOptions, mode: TrimMode) =>
-      requireLibrary().makeGif(id, start, end, options, mode)
+    (event, id: string, start: number, end: number, options: GifOptions, mode: TrimMode) =>
+      requireLibrary().makeGif(id, start, end, options, mode, sendJobProgress(event))
   )
   ipcMain.handle('pixel:model', async () => {
     const bytes = await loadPixelModel()
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+  })
+  ipcMain.handle('media:filmstrip', async (_event, id: string, count: number, duration: number) => {
+    const lib = requireLibrary()
+    const source = lib.absolutePathOf(id)
+    if (!source) throw new Error('The video file is missing')
+    return extractFilmstrip(
+      source,
+      Number(duration) || lib.item(id)?.duration || 0,
+      Number(count) || 12
+    )
   })
 
   ipcMain.handle('update:status', () => getUpdateStatus())
