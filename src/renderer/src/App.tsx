@@ -987,8 +987,12 @@ export function App() {
                   return
                 }
                 setCheckingUpdate(true)
-                await window.api.checkForUpdate()
-                setCheckingUpdate(false)
+                try {
+                  const next = await window.api.checkForUpdate()
+                  if (next.state === 'available') await window.api.installUpdate()
+                } finally {
+                  setCheckingUpdate(false)
+                }
               }}
               title={
                 update.state === 'available'
@@ -1007,7 +1011,7 @@ export function App() {
               )}
               {checkingUpdate && 'Checking…'}
               {!checkingUpdate && update.state === 'idle' && 'Update'}
-              {!checkingUpdate && update.state === 'error' && 'Update'}
+              {!checkingUpdate && update.state === 'error' && 'Update failed'}
               {!checkingUpdate && update.state === 'available' && `Update to ${update.version}`}
               {update.state === 'downloading' &&
                 `Downloading ${Math.round(update.progress * 100)}%`}

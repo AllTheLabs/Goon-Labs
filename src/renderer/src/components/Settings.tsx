@@ -200,8 +200,12 @@ export function Settings({ onClose }: SettingsProps) {
               disabled={checkingUpdate}
               onClick={async () => {
                 setCheckingUpdate(true)
-                await window.api.checkForUpdate()
-                setCheckingUpdate(false)
+                try {
+                  const next = await window.api.checkForUpdate()
+                  if (next.state === 'available') await window.api.installUpdate()
+                } finally {
+                  setCheckingUpdate(false)
+                }
               }}
             >
               {checkingUpdate ? <Loader2 className="spin" size={14} /> : <RefreshCw size={14} />}
