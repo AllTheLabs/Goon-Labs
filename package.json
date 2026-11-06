@@ -1,7 +1,7 @@
 {
   "name": "goon-labs",
   "productName": "Goon Labs",
-  "version": "2.4.0",
+  "version": "2.9.2",
   "description": "Organize, tag, view and export your photos and videos",
   "main": "./out/main/index.js",
   "author": "Goon Labs",
@@ -33,6 +33,12 @@
     ],
     "asarUnpack": [
       "node_modules/ffmpeg-static/**"
+    ],
+    "extraResources": [
+      {
+        "from": "extensions/goon-import",
+        "to": "extensions/goon-import"
+      }
     ],
     "win": {
       "target": [

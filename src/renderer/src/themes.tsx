@@ -6,6 +6,7 @@ import {
   Combine,
   Disc3,
   Droplet,
+  Globe,
   Hash,
   Heart,
   HeartPulse,
@@ -24,6 +25,7 @@ import {
 } from 'lucide-react'
 import type { LucideProps } from 'lucide-react'
 import type { ComponentType, ReactNode } from 'react'
+import type { BrowserTheme } from '../../shared/types'
 
 type Icon = ComponentType<LucideProps>
 
@@ -107,6 +109,9 @@ export interface ThemeCopy {
   goonSessions: string
   tagsHeading: string
   tagsEmpty: string
+  webHeading: string
+  webBrowser: string
+  webSearchPlaceholder: string
   searchPlaceholder: string
   emptyTitle: string
   emptyBody: string
@@ -131,6 +136,7 @@ export interface ThemeIcons {
   timeDilation: Icon
   goonImageFormat: Icon
   goonSessions: Icon
+  webBrowser: Icon
   live?: Icon
 }
 
@@ -179,6 +185,9 @@ const DEFAULT_COPY: ThemeCopy = {
   goonSessions: 'Goon Sessions',
   tagsHeading: 'Tags',
   tagsEmpty: 'Tags you add to media will show up here.',
+  webHeading: 'Web',
+  webBrowser: 'Web',
+  webSearchPlaceholder: 'Search the web or enter an address',
   searchPlaceholder: 'Search names & tags…',
   emptyTitle: 'Your library is empty',
   emptyBody: 'Import photos and videos, or drag them anywhere onto this window.',
@@ -202,7 +211,8 @@ const DEFAULT_ICONS: ThemeIcons = {
   goonLoop: Repeat,
   timeDilation: Clock,
   goonImageFormat: Image,
-  goonSessions: MonitorPlay
+  goonSessions: MonitorPlay,
+  webBrowser: Globe
 }
 
 const LIGHT_BASE = {
@@ -390,7 +400,10 @@ export const THEMES: Theme[] = [
       emptyTitle: 'Breathe in… your vault is empty',
       emptyBody: 'Import photos and videos, or let them sink onto this window.',
       welcomeTitle: 'Relax into Hypno Vault',
-      liveCaption: 'hypno session in progress'
+      liveCaption: 'hypno session in progress',
+      webHeading: 'Outside',
+      webBrowser: 'Wander',
+      webSearchPlaceholder: 'Search, or follow a link…'
     },
     icons: { brand: Tornado, tag: Sparkles, scroller: Orbit, queue: Disc3, live: HypnoSpiral },
     beatShape: 'disk'
@@ -442,7 +455,10 @@ export const THEMES: Theme[] = [
       emptyTitle: 'Nothing blacked yet',
       emptyBody: 'Import photos and videos to get your library blacked.',
       welcomeTitle: 'Welcome to BLACKED',
-      liveCaption: 'blacked session in progress'
+      liveCaption: 'blacked session in progress',
+      webHeading: 'Web',
+      webBrowser: 'Blacked web',
+      webSearchPlaceholder: 'Search the web or enter an address'
     },
     icons: { brand: AceOfSpades, tag: SolidSpade, scroller: AceOfSpades, queue: SolidSpade, live: SolidSpade },
     beatShape: 'spade'
@@ -492,7 +508,10 @@ export const THEMES: Theme[] = [
       emptyTitle: 'Your sissy library is empty',
       emptyBody: 'Import photos and videos, or drag them onto this window, sissy.',
       welcomeTitle: 'Welcome, sissy',
-      liveCaption: 'sissification in progress'
+      liveCaption: 'sissification in progress',
+      webHeading: 'Web',
+      webBrowser: 'Sissy web',
+      webSearchPlaceholder: 'Search the web or enter an address, sissy'
     },
     icons: { brand: Transgender, tag: Heart, queue: HeartPulse, live: Transgender },
     beatShape: 'heart'
@@ -505,10 +524,25 @@ const BASE_VARS: Record<string, string> = {
   'bg-elev': '#13161d',
   'bg-elev-2': '#1a1e27',
   border: '#252a36',
+  'border-strong': '#323949',
   text: '#e8eaf0',
   'text-dim': '#9aa1b2',
   accent: '#7c6cff',
   'accent-2': '#5ab0ff'
+}
+
+export function browserThemeOf(theme: Theme): BrowserTheme {
+  return {
+    scheme: theme.scheme,
+    bg: themeVar(theme, 'bg'),
+    bgElev: themeVar(theme, 'bg-elev'),
+    border: themeVar(theme, 'border'),
+    borderStrong: themeVar(theme, 'border-strong'),
+    text: themeVar(theme, 'text'),
+    textDim: themeVar(theme, 'text-dim'),
+    accent: themeVar(theme, 'accent'),
+    accent2: themeVar(theme, 'accent-2')
+  }
 }
 
 export function themeVar(theme: Theme, name: string): string {
@@ -547,7 +581,10 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState(loadSavedTheme)
 
-  useEffect(() => applyTheme(theme), [theme])
+  useEffect(() => {
+    applyTheme(theme)
+    void window.api.setBrowserTheme(browserThemeOf(theme))
+  }, [theme])
 
   const setTheme = useCallback((id: string) => {
     localStorage.setItem(STORAGE_KEY, id)

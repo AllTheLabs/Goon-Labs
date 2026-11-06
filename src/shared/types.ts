@@ -103,6 +103,8 @@ export interface AppSettings {
   /** What this process actually launched with. A toggle change needs a restart. */
   softwareWindowActive: boolean
   discordRichPresence: boolean
+  /** Draw the app logo and GitHub URL on labs (and therefore recordings). Off by default. */
+  sessionWatermark: boolean
 }
 
 export interface ChangelogRelease {
@@ -130,6 +132,34 @@ export interface DiscordActivity {
   /** Canonical lab name, or null when not in a lab. */
   lab: string | null
   idle: boolean
+}
+
+export interface BrowserBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface BrowserNavState {
+  url: string
+  title: string
+  canGoBack: boolean
+  canGoForward: boolean
+  loading: boolean
+}
+
+/** Colors from the active Goon Labs theme, used to tint the embedded browser. */
+export interface BrowserTheme {
+  scheme: 'dark' | 'light'
+  bg: string
+  bgElev: string
+  border: string
+  borderStrong: string
+  text: string
+  textDim: string
+  accent: string
+  accent2: string
 }
 
 export type TrimMode = 'new' | 'replace'
@@ -230,6 +260,7 @@ export interface MediaApi {
   getAppSettings(): Promise<AppSettings>
   setSoftwareWindow(enabled: boolean): Promise<boolean>
   setDiscordRichPresence(enabled: boolean): Promise<boolean>
+  setSessionWatermark(enabled: boolean): Promise<boolean>
   setDiscordActivity(activity: DiscordActivity): Promise<void>
   /** Consecutive local days the app has been opened. Opening today counts. */
   getGoonStreak(): Promise<number>
@@ -252,4 +283,15 @@ export interface MediaApi {
   getPixelModel(): Promise<ArrayBuffer>
   /** Evenly spaced JPEG stills for an editor timeline, using the player's duration. */
   getFilmstrip(id: string, count: number, duration: number): Promise<string[]>
+  openBrowser(bounds: BrowserBounds): Promise<void>
+  setBrowserBounds(bounds: BrowserBounds): Promise<void>
+  setBrowserVisible(visible: boolean): Promise<void>
+  setBrowserTheme(theme: BrowserTheme): Promise<void>
+  closeBrowser(): Promise<void>
+  browserNavigate(input: string): Promise<void>
+  browserBack(): Promise<void>
+  browserForward(): Promise<void>
+  browserReload(): Promise<void>
+  onBrowserState(listener: (state: BrowserNavState) => void): () => void
+  onBrowserImportStarted(listener: () => void): () => void
 }

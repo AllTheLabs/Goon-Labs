@@ -1,7 +1,17 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Clock, X } from 'lucide-react'
 import type { LabRecap as LabRecapData } from '../labRecap'
 import { formatDuration } from '../utils'
+import { Mascot } from './Mascot'
+
+const RECAP_LINES = [
+  "That was great wasn't it?",
+  'Hehehe',
+  'Going so soon?',
+  'That was fun!',
+  'Come back soon!',
+  'My little gooner <3'
+]
 
 interface LabRecapProps {
   recap: LabRecapData
@@ -9,6 +19,8 @@ interface LabRecapProps {
 }
 
 export function LabRecap({ recap, onClose }: LabRecapProps) {
+  const line = useMemo(() => RECAP_LINES[Math.floor(Math.random() * RECAP_LINES.length)], [])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -32,8 +44,14 @@ export function LabRecap({ recap, onClose }: LabRecapProps) {
         </header>
 
         <div className="recap-hero">
-          <strong>{formatDuration(recap.durationSeconds)}</strong>
-          <span>Time in session</span>
+          <div className="recap-mascot-wrap">
+            <p className="recap-bubble">{line}</p>
+            <Mascot pose="recap" />
+          </div>
+          <div className="recap-hero-copy">
+            <strong>{formatDuration(recap.durationSeconds)}</strong>
+            <span>Time in session</span>
+          </div>
         </div>
 
         {recap.stats.length > 0 && (

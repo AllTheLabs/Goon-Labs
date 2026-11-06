@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Film, Folder, FolderOpen, Image } from 'lucide-react'
 import { useTheme } from '../themes'
 import { GoonStreak } from './GoonStreak'
+import { Mascot } from './Mascot'
 
 interface WelcomeProps {
   onChoose: () => void
@@ -18,7 +19,9 @@ export function Welcome({ onChoose }: WelcomeProps) {
 
   return (
     <div className="welcome">
-      <div className="welcome-card">
+      <div className="welcome-hero">
+        <Mascot pose="full" />
+        <div className="welcome-card">
         <div className="welcome-logo">
           <BrandIcon size={34} />
         </div>
@@ -67,6 +70,7 @@ export function Welcome({ onChoose }: WelcomeProps) {
         <button className="btn btn-primary btn-lg" onClick={onChoose}>
           <FolderOpen size={18} /> Choose repository folder
         </button>
+      </div>
       </div>
     </div>
   )

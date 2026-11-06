@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   AppUpdateStatus,
+  BrowserNavState,
   JobProgress,
   DownloadJob,
   LibraryState,
@@ -61,6 +62,7 @@ const api: MediaApi = {
   getAppSettings: () => ipcRenderer.invoke('settings:get'),
   setSoftwareWindow: (enabled) => ipcRenderer.invoke('settings:set-software-window', enabled),
   setDiscordRichPresence: (enabled) => ipcRenderer.invoke('settings:set-discord-presence', enabled),
+  setSessionWatermark: (enabled) => ipcRenderer.invoke('settings:set-session-watermark', enabled),
   setDiscordActivity: (activity) => ipcRenderer.invoke('discord:set-activity', activity),
   getGoonStreak: () => ipcRenderer.invoke('streak:get'),
   onGoonStreak: (listener) => {
@@ -93,7 +95,26 @@ const api: MediaApi = {
   makeGif: (id, start, end, options, mode) =>
     ipcRenderer.invoke('media:gif', id, start, end, options, mode),
   getPixelModel: () => ipcRenderer.invoke('pixel:model'),
-  getFilmstrip: (id, count, duration) => ipcRenderer.invoke('media:filmstrip', id, count, duration)
+  getFilmstrip: (id, count, duration) => ipcRenderer.invoke('media:filmstrip', id, count, duration),
+  openBrowser: (bounds) => ipcRenderer.invoke('browser:open', bounds),
+  setBrowserBounds: (bounds) => ipcRenderer.invoke('browser:set-bounds', bounds),
+  setBrowserVisible: (visible) => ipcRenderer.invoke('browser:set-visible', visible),
+  setBrowserTheme: (theme) => ipcRenderer.invoke('browser:set-theme', theme),
+  closeBrowser: () => ipcRenderer.invoke('browser:close'),
+  browserNavigate: (input) => ipcRenderer.invoke('browser:navigate', input),
+  browserBack: () => ipcRenderer.invoke('browser:back'),
+  browserForward: () => ipcRenderer.invoke('browser:forward'),
+  browserReload: () => ipcRenderer.invoke('browser:reload'),
+  onBrowserState: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, state: BrowserNavState) => listener(state)
+    ipcRenderer.on('browser:state', handler)
+    return () => ipcRenderer.removeListener('browser:state', handler)
+  },
+  onBrowserImportStarted: (listener) => {
+    const handler = () => listener()
+    ipcRenderer.on('browser:import-started', handler)
+    return () => ipcRenderer.removeListener('browser:import-started', handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('api', api)

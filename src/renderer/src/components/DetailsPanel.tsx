@@ -1,4 +1,5 @@
-import { Clock, Combine, Download, Expand, FolderSearch, Image, MousePointerClick, Pin, Repeat, Scissors, Trash2 } from 'lucide-react'
+import { Clock, Combine, Download, Expand, FolderSearch, Image, Pin, Repeat, Scissors, Trash2 } from 'lucide-react'
+import { Mascot } from './Mascot'
 import type { MediaItem } from '../../../shared/types'
 import { extensionOf, formatBytes, formatDate, formatDuration, plural } from '../utils'
 import { DurationBadge, ItemThumb } from './ItemThumb'
@@ -34,7 +35,7 @@ export function DetailsPanel(props: DetailsPanelProps) {
     <aside className="details">
       {items.length === 0 && (
         <div className="details-empty">
-          <MousePointerClick size={32} />
+          <Mascot pose="full" className="details-mascot" />
           <p>
             {props.tagHint
               ? 'Select a photo or video, then add tags. It stays in this list until you click another one.'

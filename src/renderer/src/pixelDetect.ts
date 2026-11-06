@@ -1,6 +1,8 @@
 import * as ort from 'onnxruntime-web'
 
 const INPUT_SIZE = 320
+/** Long side of the frame fed to letterbox. The model is 320×320; 4K is wasted work. */
+const DETECT_MAX_SIDE = 640
 const SCORE_MIN = 0.25
 const IOU_MAX = 0.5
 
@@ -113,8 +115,28 @@ function dropLooseOverlaps(boxes: RawBox[]): RawBox[] {
 
 const inputCanvas = document.createElement('canvas')
 const inputCtx = inputCanvas.getContext('2d', { willReadFrequently: true })!
+const detectCanvas = document.createElement('canvas')
+const detectCtx = detectCanvas.getContext('2d', { willReadFrequently: true })!
 const sampleCanvas = document.createElement('canvas')
 const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true })!
+
+function captureFrame(
+  source: CanvasImageSource,
+  srcW: number,
+  srcH: number
+): { source: CanvasImageSource; w: number; h: number } {
+  const long = Math.max(srcW, srcH)
+  if (long <= DETECT_MAX_SIDE) return { source, w: srcW, h: srcH }
+  const scale = DETECT_MAX_SIDE / long
+  const w = Math.max(8, Math.round(srcW * scale))
+  const h = Math.max(8, Math.round(srcH * scale))
+  if (detectCanvas.width !== w) detectCanvas.width = w
+  if (detectCanvas.height !== h) detectCanvas.height = h
+  detectCtx.imageSmoothingEnabled = true
+  detectCtx.imageSmoothingQuality = 'low'
+  detectCtx.drawImage(source, 0, 0, w, h)
+  return { source: detectCanvas, w, h }
+}
 
 const SKIP_DARK_LABELS = new Set([
   'MALE_GENITALIA_EXPOSED',
@@ -380,9 +402,30 @@ export function smoothBoxes(prev: PixelBox[], next: PixelBox[]): PixelBox[] {
   return out
 }
 
+async function createSession(model: Uint8Array): Promise<ort.InferenceSession> {
+  const threads =
+    typeof SharedArrayBuffer !== 'undefined' &&
+    (typeof crossOriginIsolated === 'undefined' || crossOriginIsolated)
+      ? Math.min(4, Math.max(1, navigator.hardwareConcurrency || 1))
+      : 1
+  ort.env.wasm.numThreads = threads
+  ort.env.wasm.simd = true
+  const tryProviders: string[][] = []
+  if (typeof navigator !== 'undefined' && 'gpu' in navigator) tryProviders.push(['webgpu', 'wasm'])
+  tryProviders.push(['wasm'])
+  let lastError: unknown
+  for (const executionProviders of tryProviders) {
+    try {
+      return await ort.InferenceSession.create(model, { executionProviders })
+    } catch (err) {
+      lastError = err
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Could not start the detector')
+}
+
 export async function createPixelDetector(model: Uint8Array): Promise<PixelDetector> {
-  ort.env.wasm.numThreads = 1
-  const session = await ort.InferenceSession.create(model, { executionProviders: ['wasm'] })
+  const session = await createSession(model)
   const inputName = session.inputNames[0]
   await session.run({
     [inputName]: new ort.Tensor('float32', new Float32Array(3 * INPUT_SIZE * INPUT_SIZE), [
@@ -396,13 +439,27 @@ export async function createPixelDetector(model: Uint8Array): Promise<PixelDetec
   return {
     async detect(source, width, height, options) {
       if (width < 8 || height < 8) return []
-      const { tensor, scale, padX, padY } = letterbox(source, width, height)
+      const frame = captureFrame(source, width, height)
+      const { tensor, scale, padX, padY } = letterbox(frame.source, frame.w, frame.h)
       const results = await session.run({
         [inputName]: new ort.Tensor('float32', tensor, [1, 3, INPUT_SIZE, INPUT_SIZE])
       })
-      const boxes = decode(results[session.outputNames[0]], width, height, scale, padX, padY)
-      if (!options?.skipDarkMale) return boxes
-      return boxes.filter((box) => !isSkipDarkMaleBox(box) || !isDarkSkinRegion(source, box, width, height))
+      let boxes = decode(results[session.outputNames[0]], frame.w, frame.h, scale, padX, padY)
+      if (options?.skipDarkMale) {
+        boxes = boxes.filter(
+          (box) => !isSkipDarkMaleBox(box) || !isDarkSkinRegion(frame.source, box, frame.w, frame.h)
+        )
+      }
+      if (frame.w === width && frame.h === height) return boxes
+      const sx = width / frame.w
+      const sy = height / frame.h
+      return boxes.map((box) => ({
+        ...box,
+        x: box.x * sx,
+        y: box.y * sy,
+        w: box.w * sx,
+        h: box.h * sy
+      }))
     }
   }
 }

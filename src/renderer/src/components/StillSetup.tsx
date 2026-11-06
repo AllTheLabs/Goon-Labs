@@ -5,6 +5,7 @@ import type { LabPrefs } from '../labPrefs'
 import { useTheme } from '../themes'
 import { plural } from '../utils'
 import { LabTagPicker } from './LabTagPicker'
+import { LabSetupFrame } from './Mascot'
 import { defaultLabLaunch, LabStartToggles } from './LabStartToggles'
 import { matchVideos } from './ScrollerSetup'
 import type { TagMatch } from './ScrollerSetup'
@@ -88,8 +89,8 @@ export function StillSetup({ photos, initialTags, onStart, onClose }: StillSetup
     })
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal scroller-setup" onClick={(e) => e.stopPropagation()}>
+    <LabSetupFrame onClose={onClose}>
+      <div className="modal scroller-setup">
         <header className="modal-header">
           <div className="modal-icon">
             <StillIcon size={20} />
@@ -183,6 +184,6 @@ export function StillSetup({ photos, initialTags, onStart, onClose }: StillSetup
           </>
         )}
       </div>
-    </div>
+    </LabSetupFrame>
   )
 }

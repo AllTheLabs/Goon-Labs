@@ -4,6 +4,7 @@ import type { MediaItem } from '../../../shared/types'
 import type { LabPrefs } from '../labPrefs'
 import { useTheme } from '../themes'
 import { plural } from '../utils'
+import { LabSetupFrame } from './Mascot'
 import { defaultLabLaunch, LabStartToggles } from './LabStartToggles'
 import type { QueueEntry } from './QueueSetup'
 import { LabTagPicker } from './LabTagPicker'
@@ -137,8 +138,8 @@ export function PixelSetup({ videos, initialTags, onStart, onClose }: PixelSetup
     })
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal queue-setup" onClick={(e) => e.stopPropagation()}>
+    <LabSetupFrame onClose={onClose}>
+      <div className="modal queue-setup">
         <header className="modal-header">
           <div className="modal-icon">
             <PixelIcon size={20} />
@@ -344,6 +345,6 @@ export function PixelSetup({ videos, initialTags, onStart, onClose }: PixelSetup
           </>
         )}
       </div>
-    </div>
+    </LabSetupFrame>
   )
 }

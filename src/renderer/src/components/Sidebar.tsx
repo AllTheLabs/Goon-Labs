@@ -35,6 +35,8 @@ interface SidebarProps {
   sessionsView: boolean
   sessionCount: number
   onOpenSessions: () => void
+  webOpen: boolean
+  onOpenWeb: () => void
   onOpenThemes: () => void
   onOpenSettings: () => void
   previewsPending: number
@@ -62,7 +64,8 @@ export function Sidebar(props: SidebarProps) {
     goonLoop: LoopIcon,
     timeDilation: DilationIcon,
     goonImageFormat: GifIcon,
-    goonSessions: SessionsIcon
+    goonSessions: SessionsIcon,
+    webBrowser: WebIcon
   } = icons
 
   return (
@@ -90,7 +93,7 @@ export function Sidebar(props: SidebarProps) {
         {TYPE_ENTRIES.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
-            className={`nav-item ${props.typeFilter === key && !props.untaggedView && !props.sessionsView ? 'active' : ''}`}
+            className={`nav-item ${props.typeFilter === key && !props.untaggedView && !props.sessionsView && !props.webOpen ? 'active' : ''}`}
             onClick={() => props.onTypeFilter(key)}
           >
             <Icon size={16} />
@@ -99,7 +102,7 @@ export function Sidebar(props: SidebarProps) {
           </button>
         ))}
         <button
-          className={`nav-item ${props.untaggedView && !props.sessionsView ? 'active' : ''}`}
+          className={`nav-item ${props.untaggedView && !props.sessionsView && !props.webOpen ? 'active' : ''}`}
           onClick={props.onUntaggedView}
           title="Quickly tag media that doesn't have any tags yet"
         >
@@ -127,6 +130,18 @@ export function Sidebar(props: SidebarProps) {
             <Settings size={14} />
           </button>
         </div>
+      </nav>
+
+      <nav className="sidebar-section">
+        <div className="sidebar-heading">{copy.webHeading}</div>
+        <button
+          className={`nav-item ${props.webOpen ? 'active' : ''}`}
+          onClick={props.onOpenWeb}
+          title="Search the web in Goon Labs"
+        >
+          <WebIcon size={16} />
+          <span className="nav-label">{copy.webBrowser}</span>
+        </button>
       </nav>
 
       <nav className="sidebar-section">
@@ -195,7 +210,7 @@ export function Sidebar(props: SidebarProps) {
       <nav className="sidebar-section">
         <div className="sidebar-heading">{copy.sessionsHeading}</div>
         <button
-          className={`nav-item ${props.sessionsView ? 'active' : ''}`}
+          className={`nav-item ${props.sessionsView && !props.webOpen ? 'active' : ''}`}
           onClick={props.onOpenSessions}
           title="Lab recordings saved in this repository"
         >

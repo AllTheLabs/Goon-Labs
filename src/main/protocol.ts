@@ -5,21 +5,62 @@ import type { Library } from './library'
 import { mimeTypeOf } from './mediaTypes'
 
 export const MEDIA_SCHEME = 'media'
+export const IMPORT_SCHEME = 'goonlabs'
+
+const FETCH_PRIVILEGES = {
+  standard: true,
+  secure: true,
+  supportFetchAPI: true,
+  corsEnabled: true
+}
 
 /** Must be called before the app is ready. */
 export function registerMediaScheme(): void {
   protocol.registerSchemesAsPrivileged([
-    {
-      scheme: MEDIA_SCHEME,
-      privileges: {
-        standard: true,
-        secure: true,
-        supportFetchAPI: true,
-        stream: true,
-        corsEnabled: true
-      }
-    }
+    { scheme: MEDIA_SCHEME, privileges: { ...FETCH_PRIVILEGES, stream: true } },
+    { scheme: IMPORT_SCHEME, privileges: FETCH_PRIVILEGES }
   ])
+}
+
+const JSON_HEADERS = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*'
+}
+
+/** Lets the bundled Web extension ask Goon Labs to download the current page. */
+export function handleImportProtocol(importUrls: (urls: string[]) => { ok: boolean; error?: string; count?: number }): void {
+  protocol.handle(IMPORT_SCHEME, async (request) => {
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          ...JSON_HEADERS,
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': '*'
+        }
+      })
+    }
+    try {
+      const parsed = new URL(request.url)
+      const urls = parsed.searchParams.getAll('url').map((url) => url.trim()).filter(Boolean)
+      if (urls.length === 0) {
+        return new Response(JSON.stringify({ ok: false, error: 'Nothing to save on this page' }), {
+          status: 400,
+          headers: JSON_HEADERS
+        })
+      }
+      const result = importUrls(urls)
+      return new Response(JSON.stringify(result), {
+        status: result.ok ? 200 : 409,
+        headers: JSON_HEADERS
+      })
+    } catch (err) {
+      return new Response(JSON.stringify({ ok: false, error: (err as Error).message }), {
+        status: 400,
+        headers: JSON_HEADERS
+      })
+    }
+  })
 }
 
 function streamResponse(

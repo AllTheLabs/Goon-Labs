@@ -22,6 +22,7 @@ export class AudioMixer {
   private readonly channels = new Map<number, Channel>()
   // An element can only ever be wrapped by one MediaElementAudioSourceNode.
   private readonly sources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>()
+  private readonly audible = new Set<number>()
   private focused: number | null = null
 
   constructor(volume: number) {
@@ -58,7 +59,15 @@ export class AudioMixer {
     channel.source.disconnect()
     channel.gain.disconnect()
     this.channels.delete(key)
+    this.audible.delete(key)
     if (this.focused === key) this.focused = null
+    this.rebalance()
+  }
+
+  /** Off-screen preload tiles keep decoding but should not be heard. */
+  setAudible(key: number, on: boolean): void {
+    if (on) this.audible.add(key)
+    else this.audible.delete(key)
     this.rebalance()
   }
 
@@ -78,14 +87,20 @@ export class AudioMixer {
 
   close(): void {
     setLabAudioCapture(null)
+    for (const key of [...this.channels.keys()]) this.detach(key)
     void this.ctx.close()
   }
 
   private rebalance(): void {
     if (this.ctx.state === 'closed') return
-    const base = 1 / Math.sqrt(Math.max(1, this.channels.size))
+    const heard = Math.max(1, [...this.channels.keys()].filter((key) => this.audible.has(key)).length)
+    const base = 1 / Math.sqrt(heard)
     const now = this.ctx.currentTime
     for (const [key, { gain }] of this.channels) {
+      if (!this.audible.has(key)) {
+        gain.gain.setTargetAtTime(0, now, RAMP / 3)
+        continue
+      }
       const target = this.focused === null ? base : key === this.focused ? 0.9 : base * DUCKED
       gain.gain.setTargetAtTime(target, now, RAMP / 3)
     }

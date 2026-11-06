@@ -1,4 +1,5 @@
 import type { MediaItem } from '../../shared/types'
+import { MAX_SCROLLER_TILES } from './scrollerDecode'
 export interface Tile {
   key: number
   item: MediaItem
@@ -36,8 +37,8 @@ export interface Layout {
  * Justified layout: rows are filled left to right with tiles at their true aspect ratio,
  * and each row's height is chosen so its tiles exactly span `width`, landing as close to
  * `targetHeight` as possible. Leftover tiles that can't yet fill a row are still placed
- * (below the complete rows) so they stay mounted and keep playing while a resize re-flows
- * the grid; they wait there for more tiles to be appended.
+ * (below the complete rows) so they stay mounted and can start decoding while a resize
+ * re-flows the grid; they wait there for more tiles to be appended.
  *
  * Rows are formed greedily from the start, so dropping the first row's tiles or appending
  * tiles at the end never changes the rows in between.
@@ -92,9 +93,16 @@ export function justify(tiles: Tile[], width: number, targetHeight: number): Lay
   return { rows, placed, height: y }
 }
 
+/** Viewport plus the row leaving at the top plus one full row waiting below the fold. */
+function neededHeight(layout: Layout, viewportHeight: number, targetHeight: number): number {
+  const leaving = layout.rows[0]?.height ?? targetHeight
+  return viewportHeight + leaving + targetHeight
+}
+
 /**
- * Grows or trims the tile sequence so its complete rows cover the viewport plus one extra
- * row (the one partly scrolled off the top), and no more.
+ * Grows or trims the tile sequence so its complete rows cover the viewport, the row
+ * partly scrolled off the top, and one extra row below the fold that can decode
+ * before it becomes visible.
  */
 export function fitTiles(
   tiles: Tile[],
@@ -106,8 +114,9 @@ export function fitTiles(
   let sequence = tiles
   for (let guard = 0; guard < 500; guard++) {
     const layout = justify(sequence, width, targetHeight)
-    const needed = viewportHeight + (layout.rows[0]?.height ?? targetHeight)
+    const needed = neededHeight(layout, viewportHeight, targetHeight)
     if (layout.height >= needed) return trimTo(sequence, layout, needed)
+    if (sequence.length >= MAX_SCROLLER_TILES) return trimTo(sequence, layout, needed)
     sequence = [...sequence, makeTile(), makeTile()]
   }
   return sequence
@@ -182,7 +191,7 @@ export async function probeAspects(
     }
   }
   if (unknown.length > 0) {
-    await Promise.all(Array.from({ length: Math.min(6, unknown.length) }, worker))
+    await Promise.all(Array.from({ length: Math.min(3, unknown.length) }, worker))
   }
   return result
 }

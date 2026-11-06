@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { Check, Palette, X } from 'lucide-react'
 import { THEMES, themeVar, useTheme } from '../themes'
 import type { Theme } from '../themes'
+import { Mascot } from './Mascot'
 
 interface ThemePickerProps {
   onClose: () => void
@@ -38,6 +39,7 @@ function ThemeCard({ theme, active, onPick }: { theme: Theme; active: boolean; o
             <i />
           </div>
         </div>
+        <Mascot pose="peek" className="theme-preview-mascot" themeId={theme.id} />
         {active && (
           <span className="theme-check">
             <Check size={12} strokeWidth={3} />

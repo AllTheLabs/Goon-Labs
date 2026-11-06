@@ -6,6 +6,7 @@ import { useTheme } from '../themes'
 import { plural } from '../utils'
 import { INTENSITIES } from './BeatBar'
 import type { BeatIntensity } from './BeatBar'
+import { LabSetupFrame } from './Mascot'
 import { defaultLabLaunch, LabStartToggles } from './LabStartToggles'
 import { LabTagPicker } from './LabTagPicker'
 import { matchVideos } from './ScrollerSetup'
@@ -119,8 +120,8 @@ export function QueueSetup({ videos, initialTags, onStart, onClose }: QueueSetup
     })
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal queue-setup" onClick={(e) => e.stopPropagation()}>
+    <LabSetupFrame onClose={onClose}>
+      <div className="modal queue-setup">
         <header className="modal-header">
           <div className="modal-icon">
             <QueueIcon size={20} />
@@ -293,6 +294,6 @@ export function QueueSetup({ videos, initialTags, onStart, onClose }: QueueSetup
           </>
         )}
       </div>
-    </div>
+    </LabSetupFrame>
   )
 }

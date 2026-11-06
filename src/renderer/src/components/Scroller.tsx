@@ -23,7 +23,14 @@ import { AudioMixer } from '../audioMixer'
 import { fitTiles, justify, probeAspects } from '../scrollerLayout'
 import type { Tile } from '../scrollerLayout'
 import { useTheme } from '../themes'
-import { mediaUrl, plural, previewUrl } from '../utils'
+import {
+  clearSrcCache,
+  MAX_SCROLLER_TILES,
+  playWhenReady,
+  ScrollerVideoPool,
+  warmSrc
+} from '../scrollerDecode'
+import { mediaUrl, plural, previewUrl, thumbUrl } from '../utils'
 import { useLabSession } from './LabSession'
 import { anyEffectActive, EffectsOverlay, EffectsPanel, useEffectSettings } from './ScrollerEffects'
 
@@ -36,19 +43,13 @@ interface ScrollerProps {
 }
 
 const CONTROLS_HIDE_MS = 2500
-/** Tiles taller than this (in device pixels) use the original file instead of the 540p preview. */
-const PREVIEW_MAX_TILE_HEIGHT = 600
-/**
- * Most videos that may play at once. Past roughly this many, Chromium's per-video overhead in
- * the GPU process saturates a core and frames drop no matter how small the videos are.
- */
-const MAX_TILES = 56
+const MAX_TILES = MAX_SCROLLER_TILES
 
-/** Smallest row height that keeps the estimated tile count (including the buffer row) within MAX_TILES. */
+/** Smallest row height that keeps on-screen tiles plus top recycle and bottom preload rows within MAX_TILES. */
 function minRowHeightFor(width: number, height: number, averageAspect: number): number {
   for (let row = MIN_ROW; row < MAX_ROW; row += 5) {
     const tilesPerRow = width / (row * averageAspect)
-    const rows = Math.ceil(height / row) + 1
+    const rows = Math.ceil(height / row) + 2
     if (tilesPerRow * rows <= MAX_TILES) return row
   }
   return MAX_ROW
@@ -88,6 +89,13 @@ function createPicker(videos: MediaItem[]) {
     },
     markUnplayable(id: string) {
       unplayable.add(id)
+    },
+    peek(count: number): MediaItem[] {
+      const upcoming: MediaItem[] = []
+      for (let i = deck.length - 1; i >= 0 && upcoming.length < count; i--) {
+        upcoming.push(deck[i])
+      }
+      return upcoming
     }
   }
 }
@@ -136,19 +144,23 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
 
   // Read through a ref so new previews and size changes apply to newly dealt tiles
   // without re-flowing the ones already playing.
-  const sourcing = useRef({ previewIds, rowHeight })
-  sourcing.current = { previewIds, rowHeight }
+  const sourcing = useRef({ previewIds })
+  sourcing.current = { previewIds }
   const makeTile = useCallback((): Tile => {
     const item = picker!.next()
     tilesShown.current++
     uniqueShown.current.add(item.id)
-    const { previewIds, rowHeight } = sourcing.current
-    const usePreview =
-      previewIds.has(item.id) && rowHeight * window.devicePixelRatio <= PREVIEW_MAX_TILE_HEIGHT
+    const srcOf = (next: MediaItem) =>
+      sourcing.current.previewIds.has(next.id) ? previewUrl(next) : mediaUrl(next)
+    const src = srcOf(item)
+    if (sourcing.current.previewIds.has(item.id)) warmSrc(src)
+    for (const upcoming of picker!.peek(4)) {
+      if (sourcing.current.previewIds.has(upcoming.id)) warmSrc(srcOf(upcoming))
+    }
     return {
       key: ++nextKey.current,
       item,
-      src: usePreview ? previewUrl(item) : mediaUrl(item),
+      src,
       aspect: aspects!.get(item.id)!
     }
   }, [picker, aspects])
@@ -185,11 +197,27 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
     }
   }, [videos])
 
+  const poolRef = useRef<ScrollerVideoPool | null>(null)
+  if (!poolRef.current) poolRef.current = new ScrollerVideoPool()
+  const pool = poolRef.current
+
   useEffect(() => {
     const created = new AudioMixer(0.7)
     setMixer(created)
-    return () => created.close()
-  }, [])
+    pool.setMixer(created)
+    return () => {
+      pool.setMixer(null)
+      created.close()
+    }
+  }, [pool])
+
+  useEffect(
+    () => () => {
+      pool.dispose()
+      clearSrcCache()
+    },
+    [pool]
+  )
 
   useEffect(() => {
     mixer?.setVolume((muted ? 0 : volume) * lab.fade)
@@ -340,7 +368,9 @@ export function Scroller({ videos, tags, previewIds, launch, onClose }: Scroller
                   top={top}
                   width={Math.round(x + width) - left + 1}
                   height={Math.round(y + height) - top + 1}
+                  active={y < layout.height + height}
                   mixer={mixer}
+                  pool={pool}
                   hoverFocus={hoverFocus}
                   onFailed={onTileFailed}
                 />
@@ -490,7 +520,9 @@ interface ScrollerTileProps {
   top: number
   width: number
   height: number
+  active: boolean
   mixer: AudioMixer
+  pool: ScrollerVideoPool
   hoverFocus: boolean
   onFailed: (id: string) => void
 }
@@ -503,37 +535,63 @@ const ScrollerTile = memo(function ScrollerTile({
   top,
   width,
   height,
+  active,
   mixer,
+  pool,
   hoverFocus,
   onFailed
 }: ScrollerTileProps) {
-  const ref = useRef<HTMLVideoElement>(null)
+  const hostRef = useRef<HTMLDivElement>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+
+  useLayoutEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    const video = pool.take(src, tileKey, thumbUrl(item))
+    video.onerror = () => onFailed(item.id)
+    host.appendChild(video)
+    videoRef.current = video
+    const visible = new IntersectionObserver(
+      ([entry]) => mixer.setAudible(tileKey, entry.isIntersecting),
+      { threshold: 0.02 }
+    )
+    visible.observe(host)
+    return () => {
+      visible.disconnect()
+      mixer.setAudible(tileKey, false)
+      video.onerror = null
+      pool.give(video)
+      videoRef.current = null
+    }
+  }, [pool, src, tileKey, item, mixer, onFailed])
 
   useEffect(() => {
-    const element = ref.current
-    if (!element) return
-    mixer.attach(tileKey, element)
-    return () => mixer.detach(tileKey)
-  }, [mixer, tileKey])
+    const video = videoRef.current
+    if (!video) return
+    if (!active) {
+      video.pause()
+      return
+    }
+    let cancelled = false
+    void playWhenReady(video, () => cancelled)
+    return () => {
+      cancelled = true
+      // The element may already belong to the next row; only pause if it is still ours.
+      if (video.dataset.tileKey === String(tileKey)) video.pause()
+    }
+  }, [active, src, tileKey])
 
   return (
-    <video
-      ref={ref}
+    <div
+      ref={hostRef}
       className="scroller-tile"
-      style={{ left, top, width, height }}
-      crossOrigin="anonymous"
-      src={src}
-      autoPlay
-      loop
-      playsInline
-      onLoadedMetadata={(e) => {
-        // Start at a random point so duplicate tiles of the same video don't play in lockstep.
-        const video = e.currentTarget
-        if (Number.isFinite(video.duration) && video.duration > 4) {
-          video.currentTime = Math.random() * video.duration * 0.8
-        }
+      style={{
+        left,
+        top,
+        width,
+        height,
+        backgroundImage: `url("${thumbUrl(item)}")`
       }}
-      onError={() => onFailed(item.id)}
       onMouseEnter={() => hoverFocus && mixer.setFocus(tileKey)}
       onMouseLeave={() => hoverFocus && mixer.setFocus(null)}
     />

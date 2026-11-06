@@ -88,6 +88,8 @@ function formatClock(seconds: number): string {
   return `${m}:${s}`
 }
 
+const GITHUB_URL = 'https://github.com/AllTheLabs/Goon-Labs'
+
 export function useLabSession(
   labName: string,
   launch: Partial<LabPrefs> = {},
@@ -95,9 +97,11 @@ export function useLabSession(
 ) {
   const { copy, icons } = useTheme()
   const LiveIcon = icons.live
+  const BrandIcon = icons.brand
   const [cam, setCam] = useState(loadCam)
   const [cameraOn, setCameraOn] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [watermark, setWatermark] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
   const camRef = useRef<HTMLVideoElement>(null)
@@ -262,6 +266,10 @@ export function useLabSession(
   }, [launch.sessionLimitSeconds])
 
   useEffect(() => {
+    void window.api.getAppSettings().then((settings) => setWatermark(settings.sessionWatermark))
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
     void (async () => {
       if (launch.webcamOnEnter) {
@@ -287,6 +295,17 @@ export function useLabSession(
 
   const overlay = (
     <>
+      {watermark && (
+        <div className="session-watermark" aria-hidden="true">
+          <div className="session-watermark-logo">
+            <BrandIcon size={22} />
+          </div>
+          <div className="session-watermark-copy">
+            <strong>{copy.appName}</strong>
+            <small>{GITHUB_URL}</small>
+          </div>
+        </div>
+      )}
       {cameraOn && (
         <div
           className={`lab-cam ${cam.corner}`}

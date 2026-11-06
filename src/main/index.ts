@@ -2,6 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainInvo
 import { existsSync, promises as fs, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type {
+  BrowserBounds,
   DilationProgress,
   DilationSpan,
   DiscordActivity,
@@ -10,13 +11,14 @@ import type {
   SpliceSpan,
   TrimMode
 } from '../shared/types'
+import { EmbeddedBrowser, installBrowserSwitches, parseBrowserTheme } from './embeddedBrowser'
 import { dismissChangelog, pendingChangelog } from './changelog'
 import { checkForUpdate, getUpdateStatus, installUpdate, onUpdateStatus } from './updater'
 import { DownloadManager } from './downloads'
 import { Library } from './library'
 import { IMAGE_EXTENSIONS, VIDEO_EXTENSIONS } from './mediaTypes'
 import { loadPixelModel } from './pixelModel'
-import { handleMediaProtocol, registerMediaScheme } from './protocol'
+import { handleImportProtocol, handleMediaProtocol, registerMediaScheme } from './protocol'
 import { extractFilmstrip } from './thumbs'
 import { installCapturePermissions, SessionRecording, windowSourceId } from './sessionCapture'
 import { setDiscordActivity, setDiscordEnabled, setDiscordStreak, stopDiscordPresence } from './discordPresence'
@@ -30,6 +32,8 @@ interface AppConfig {
   softwareWindow?: boolean
   /** Show Goon Labs on Discord. Off by default. */
   discordRichPresence?: boolean
+  /** Draw the logo and GitHub URL on labs. Off by default. */
+  sessionWatermark?: boolean
   /** Last version whose GitHub release notes were shown. */
   lastChangelogVersion?: string
   /** Consecutive local days the app has been opened. */
@@ -40,6 +44,7 @@ interface AppConfig {
 
 let mainWindow: BrowserWindow | null = null
 let library: Library | null = null
+const embeddedBrowser = new EmbeddedBrowser()
 const downloads = new DownloadManager(
   () => library,
   (job) => mainWindow?.webContents.send('downloads:update', job)
@@ -71,6 +76,8 @@ function readConfigSync(): AppConfig {
 
 const softwareWindowActive = Boolean(readConfigSync().softwareWindow)
 if (softwareWindowActive) app.disableHardwareAcceleration()
+else app.commandLine.appendSwitch('enable-gpu-rasterization')
+installBrowserSwitches()
 
 async function readConfig(): Promise<AppConfig> {
   try {
@@ -276,13 +283,20 @@ function registerIpc(): void {
     return {
       softwareWindow: Boolean(config.softwareWindow),
       softwareWindowActive,
-      discordRichPresence: Boolean(config.discordRichPresence)
+      discordRichPresence: Boolean(config.discordRichPresence),
+      sessionWatermark: Boolean(config.sessionWatermark)
     }
   })
   ipcMain.handle('settings:set-software-window', async (_event, enabled: boolean) => {
     const config = await readConfig()
     await writeConfig({ ...config, softwareWindow: Boolean(enabled) })
     return Boolean(enabled)
+  })
+  ipcMain.handle('settings:set-session-watermark', async (_event, enabled: boolean) => {
+    const on = Boolean(enabled)
+    const config = await readConfig()
+    await writeConfig({ ...config, sessionWatermark: on })
+    return on
   })
   ipcMain.handle('settings:set-discord-presence', async (_event, enabled: boolean) => {
     const on = Boolean(enabled)
@@ -359,6 +373,36 @@ function registerIpc(): void {
     return shell.openExternal(url)
   })
 
+  ipcMain.handle('browser:open', (event, bounds: BrowserBounds) => {
+    if (!mainWindow) return
+    return embeddedBrowser.show(mainWindow, event.sender, bounds)
+  })
+  ipcMain.handle('browser:set-bounds', (_event, bounds: BrowserBounds) => {
+    embeddedBrowser.setBounds(bounds)
+  })
+  ipcMain.handle('browser:set-visible', (_event, visible: boolean) => {
+    embeddedBrowser.setVisible(Boolean(visible))
+  })
+  ipcMain.handle('browser:set-theme', (_event, raw: unknown) => {
+    const theme = parseBrowserTheme(raw)
+    if (!theme) return
+    embeddedBrowser.setTheme(theme)
+    if (/^#[0-9a-f]{3,8}$/i.test(theme.bg)) mainWindow?.setBackgroundColor(theme.bg)
+  })
+  ipcMain.handle('browser:close', () => embeddedBrowser.close())
+  ipcMain.handle('browser:navigate', (_event, input: string) => {
+    embeddedBrowser.navigate(String(input ?? ''))
+  })
+  ipcMain.handle('browser:back', () => embeddedBrowser.back())
+  ipcMain.handle('browser:forward', () => embeddedBrowser.forward())
+  ipcMain.handle('browser:reload', () => embeddedBrowser.reload())
+  ipcMain.handle('browser:import-media', (_event, urls: unknown) => {
+    if (!library) return { ok: false, error: 'Choose a media repository first' }
+    const list = Array.isArray(urls) ? urls.map((url) => String(url)) : []
+    const jobs = downloads.enqueue(list)
+    mainWindow?.webContents.send('browser:import-started')
+    return { ok: true, count: jobs.length }
+  })
 }
 
 function createWindow(): void {
@@ -386,7 +430,10 @@ function createWindow(): void {
     mainWindow.show()
   })
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  mainWindow.on('closed', () => (mainWindow = null))
+  mainWindow.on('closed', () => {
+    void embeddedBrowser.close()
+    mainWindow = null
+  })
 
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -397,6 +444,12 @@ function createWindow(): void {
 
 app.whenReady().then(async () => {
   handleMediaProtocol(() => library)
+  handleImportProtocol((urls) => {
+    if (!library) return { ok: false, error: 'Choose a media repository first' }
+    const jobs = downloads.enqueue(urls)
+    mainWindow?.webContents.send('browser:import-started')
+    return { ok: true, count: jobs.length }
+  })
   installCapturePermissions()
   registerIpc()
   createWindow()
@@ -413,6 +466,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', () => {
+  void embeddedBrowser.close()
   stopDiscordPresence()
 })
 

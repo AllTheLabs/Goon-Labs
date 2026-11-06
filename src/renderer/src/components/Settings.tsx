@@ -3,6 +3,7 @@ import { Download, Loader2, RefreshCw, Settings as SettingsIcon, X } from 'lucid
 import { useAppUpdate } from '../appUpdate'
 import { loadLabPrefs, saveLabPrefs } from '../labPrefs'
 import type { LabPrefs } from '../labPrefs'
+import { Mascot } from './Mascot'
 
 interface SettingsProps {
   onClose: () => void
@@ -149,6 +150,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [softwareWindow, setSoftwareWindow] = useState(false)
   const [softwareWindowActive, setSoftwareWindowActive] = useState(false)
   const [discordRichPresence, setDiscordRichPresence] = useState(false)
+  const [sessionWatermark, setSessionWatermark] = useState(false)
   const [prefs, setPrefs] = useState(loadLabPrefs)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const update = useAppUpdate()
@@ -158,6 +160,7 @@ export function Settings({ onClose }: SettingsProps) {
       setSoftwareWindow(settings.softwareWindow)
       setSoftwareWindowActive(settings.softwareWindowActive)
       setDiscordRichPresence(settings.discordRichPresence)
+      setSessionWatermark(settings.sessionWatermark)
     })
   }, [])
 
@@ -174,7 +177,9 @@ export function Settings({ onClose }: SettingsProps) {
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal settings-modal">
+      <div className="modal-with-mascot">
+        <Mascot pose="wrench" className="modal-mascot" />
+        <div className="modal settings-modal">
         <header className="modal-header">
           <div className="modal-icon">
             <SettingsIcon size={20} />
@@ -188,6 +193,7 @@ export function Settings({ onClose }: SettingsProps) {
           </button>
         </header>
 
+        <div className="settings-modal-body">
         <section className="settings-block">
           <h3>Updates</h3>
           <p className="hint">
@@ -230,6 +236,24 @@ export function Settings({ onClose }: SettingsProps) {
         <section className="settings-block">
           <h3>When a lab opens</h3>
           <LabPrefToggles value={prefs} onChange={updatePrefs} />
+          <label className={`endless-toggle ${sessionWatermark ? 'on' : ''}`}>
+            <input
+              type="checkbox"
+              checked={sessionWatermark}
+              onChange={async (e) => {
+                const on = e.target.checked
+                setSessionWatermark(on)
+                await window.api.setSessionWatermark(on)
+              }}
+            />
+            <span>
+              <strong>Show watermark</strong>
+              <small>
+                Puts the logo, app name, and GitHub URL in the bottom left of every lab.
+                Recordings pick it up too. Off by default.
+              </small>
+            </span>
+          </label>
         </section>
 
         <section className="settings-block">
@@ -271,8 +295,9 @@ export function Settings({ onClose }: SettingsProps) {
             <span>
               <strong>Software window rendering</strong>
               <small>
-                Draw the app window on the CPU. Fixes flicker and leftover images on some graphics
-                drivers. Time Dilation and other ffmpeg jobs still use the GPU if they can.
+                Draw the app window on the CPU. Fixes flicker, leftover images, and blurry UI on
+                some graphics drivers. Time Dilation and other ffmpeg jobs still use the GPU if
+                they can.
               </small>
             </span>
           </label>
@@ -296,6 +321,8 @@ export function Settings({ onClose }: SettingsProps) {
           <KeyTable title="Goon Loop" rows={LOOP_KEYS} />
           <KeyTable title="Time Dilation" rows={DILATION_KEYS} />
           <KeyTable title="Goon Image Format" rows={GIF_KEYS} />
+        </div>
+        </div>
         </div>
       </div>
     </div>

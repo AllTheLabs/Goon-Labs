@@ -7,6 +7,7 @@ import type { LabPrefs } from '../labPrefs'
 import { useTheme } from '../themes'
 import { plural } from '../utils'
 import { LabTagPicker } from './LabTagPicker'
+import { LabSetupFrame } from './Mascot'
 import { defaultLabLaunch, LabStartToggles } from './LabStartToggles'
 import { matchVideos } from './ScrollerSetup'
 import type { TagMatch } from './ScrollerSetup'
@@ -103,8 +104,8 @@ export function ComparatorSetup({ videos, initialTags, onStart, onClose }: Compa
   const ready = leftVideos.length > 0 && rightVideos.length > 0
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal comparator-setup" onClick={(e) => e.stopPropagation()}>
+    <LabSetupFrame onClose={onClose}>
+      <div className="modal comparator-setup">
         <header className="modal-header">
           <div className="modal-icon">
             <ComparatorIcon size={20} />
@@ -191,7 +192,7 @@ export function ComparatorSetup({ videos, initialTags, onStart, onClose }: Compa
           </>
         )}
       </div>
-    </div>
+    </LabSetupFrame>
   )
 }
 

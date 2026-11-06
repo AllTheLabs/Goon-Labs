@@ -75,6 +75,9 @@ import { Toasts } from './components/Toasts'
 import type { Toast, ToastKind } from './components/Toasts'
 import { Viewer } from './components/Viewer'
 import { Welcome } from './components/Welcome'
+import { WebBrowser } from './components/WebBrowser'
+import { DownloadHud } from './components/DownloadHud'
+import { Mascot } from './components/Mascot'
 import { useAppUpdate } from './appUpdate'
 import { useDiscordPresence } from './discordPresence'
 import { loadGoonDiceSettings, rollFeelingLucky, saveGoonDiceSettings } from './goonDice'
@@ -124,6 +127,7 @@ export function App() {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [untaggedView, setUntaggedView] = useState(false)
   const [sessionsView, setSessionsView] = useState(false)
+  const [webOpen, setWebOpen] = useState(false)
   const [activeTags, setActiveTags] = useState<string[]>([])
   const [sort, setSort] = useState<SortKey>('newest')
   const [thumbSize, setThumbSize] = useState(200)
@@ -271,7 +275,7 @@ export function App() {
   urlImportOpenRef.current = urlImportOpen
   useEffect(() => {
     window.api.getDownloads().then(setDownloads)
-    return window.api.onDownloadUpdate((job) => {
+    const stopDownloads = window.api.onDownloadUpdate((job) => {
       setDownloads((current) => {
         const index = current.findIndex((j) => j.id === job.id)
         if (index < 0) return [...current, job]
@@ -291,6 +295,9 @@ export function App() {
         notify('error', 'Download failed', `${job.url}\n${job.error ?? ''}`)
       }
     })
+    return () => {
+      stopDownloads()
+    }
   }, [notify])
   const activeDownloads = downloads.filter((job) =>
     ['queued', 'downloading', 'importing'].includes(job.status)
@@ -675,6 +682,7 @@ export function App() {
         notify('error', "I'm feeling lucky", result.error)
         return
       }
+      setWebOpen(false)
       setViewerId(null)
       setTrimmer(null)
       setSplicer(null)
@@ -789,7 +797,7 @@ export function App() {
   )
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (viewerId || scroller || queue || pixel || hypno || still || trimmer || splicer || goonLoop || dilation || gifMaker || themesOpen || settingsOpen || urlImportOpen || recap || dicePrompt || isTypingTarget(e.target)) return
+      if (webOpen || viewerId || scroller || queue || pixel || hypno || still || trimmer || splicer || goonLoop || dilation || gifMaker || themesOpen || settingsOpen || urlImportOpen || recap || dicePrompt || isTypingTarget(e.target)) return
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         if (sessionsView) return
         e.preventDefault()
@@ -812,6 +820,7 @@ export function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [
+    webOpen,
     viewerId,
     scroller,
     queue,
@@ -935,8 +944,34 @@ export function App() {
     query !== '' || activeTags.length > 0 || (!sessionsView && typeFilter !== 'all') || untaggedView
   const untaggedCaughtUp = untaggedView && untaggedCount === 0 && query === '' && visible.length === 0
 
+  const browserOccluded = Boolean(
+    viewerIndex >= 0 ||
+      scroller ||
+      queue ||
+      pixel ||
+      hypno ||
+      still ||
+      comparator ||
+      trimmer ||
+      splicer ||
+      goonLoop ||
+      dilation ||
+      gifMaker ||
+      urlImportOpen ||
+      themesOpen ||
+      settingsOpen ||
+      dicePrompt ||
+      recap ||
+      changelog ||
+      updateOverlay ||
+      dragging
+  )
+
   return (
-    <div className="app" style={{ '--thumb-size': `${thumbSize}px` } as CSSProperties}>
+    <div
+      className={`app ${webOpen ? 'app-browser' : ''}`}
+      style={{ '--thumb-size': `${thumbSize}px` } as CSSProperties}
+    >
       <Sidebar
         counts={counts}
         typeFilter={typeFilter}
@@ -944,6 +979,7 @@ export function App() {
           setTypeFilter(filter)
           setUntaggedView(false)
           setSessionsView(false)
+          setWebOpen(false)
         }}
         untaggedCount={untaggedCount}
         untaggedView={untaggedView}
@@ -956,6 +992,7 @@ export function App() {
         onUntaggedView={() => {
           setUntaggedView(true)
           setSessionsView(false)
+          setWebOpen(false)
           setActiveTags([])
           setSelected((current) => {
             const keep = [...current].filter((id) => {
@@ -969,6 +1006,7 @@ export function App() {
         activeTags={activeTags}
         onToggleTag={(tag) => {
           setUntaggedView(false)
+          setWebOpen(false)
           setActiveTags((current) =>
             current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag]
           )
@@ -978,30 +1016,79 @@ export function App() {
         onOpenSessions={() => {
           setSessionsView(true)
           setUntaggedView(false)
+          setWebOpen(false)
           setActiveTags([])
           setSelected(new Set())
           setActiveId(null)
         }}
+        webOpen={webOpen}
+        onOpenWeb={() => {
+          setWebOpen(true)
+          setSessionsView(false)
+          setUntaggedView(false)
+        }}
         onClearTags={() => setActiveTags([])}
         root={library.root}
         onChangeRepository={chooseRepository}
-        onOpenScroller={() => setScroller('setup')}
-        onOpenQueue={() => setQueue('setup')}
-        onOpenPixel={() => setPixel('setup')}
-        onOpenHypno={() => setHypno('setup')}
-        onOpenComparator={() => setComparator('setup')}
-        onOpenStill={() => setStill('setup')}
-        onOpenTrimmer={() => setTrimmer('pick')}
-        onOpenSplicer={() => setSplicer('pick')}
-        onOpenGoonLoop={() => setGoonLoop('pick')}
-        onOpenTimeDilation={() => setDilation('pick')}
-        onOpenGif={() => setGifMaker('pick')}
+        onOpenScroller={() => {
+          setWebOpen(false)
+          setScroller('setup')
+        }}
+        onOpenQueue={() => {
+          setWebOpen(false)
+          setQueue('setup')
+        }}
+        onOpenPixel={() => {
+          setWebOpen(false)
+          setPixel('setup')
+        }}
+        onOpenHypno={() => {
+          setWebOpen(false)
+          setHypno('setup')
+        }}
+        onOpenComparator={() => {
+          setWebOpen(false)
+          setComparator('setup')
+        }}
+        onOpenStill={() => {
+          setWebOpen(false)
+          setStill('setup')
+        }}
+        onOpenTrimmer={() => {
+          setWebOpen(false)
+          setTrimmer('pick')
+        }}
+        onOpenSplicer={() => {
+          setWebOpen(false)
+          setSplicer('pick')
+        }}
+        onOpenGoonLoop={() => {
+          setWebOpen(false)
+          setGoonLoop('pick')
+        }}
+        onOpenTimeDilation={() => {
+          setWebOpen(false)
+          setDilation('pick')
+        }}
+        onOpenGif={() => {
+          setWebOpen(false)
+          setGifMaker('pick')
+        }}
         onOpenThemes={() => setThemesOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         previewsPending={library.previewsPending}
       />
 
       <main className="main">
+        {webOpen && (
+          <WebBrowser
+            occluded={browserOccluded}
+            jobs={downloads}
+            onClose={() => setWebOpen(false)}
+          />
+        )}
+        {!webOpen && (
+          <>
         <header className="toolbar">
           <div className="toolbar-update-group">
             <button
@@ -1087,6 +1174,8 @@ export function App() {
             title="Thumbnail size"
           />
 
+          <DownloadHud jobs={downloads} />
+
           <div className="toolbar-spacer" />
 
           <button className="btn btn-ghost btn-icon" onClick={refresh} title="Rescan repository folders">
@@ -1169,9 +1258,7 @@ export function App() {
             </div>
           ) : !sessionsView && items.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">
-                <Upload size={30} />
-              </div>
+              <Mascot pose="empty" className="empty-mascot" />
               <h2>{copy.emptyTitle}</h2>
               <p>{copy.emptyBody}</p>
               <div className="empty-actions">
@@ -1264,8 +1351,11 @@ export function App() {
             </div>
           )}
         </div>
+          </>
+        )}
       </main>
 
+      {!webOpen && (
       <DetailsPanel
         items={selectedItems}
         allTags={allTags}
@@ -1288,6 +1378,7 @@ export function App() {
         onExport={exportSelected}
         onDelete={() => deleteItems(selectedItems.map((item) => item.id))}
       />
+      )}
 
       {viewerIndex >= 0 && (
         <Viewer
@@ -1350,6 +1441,7 @@ export function App() {
           <PixelPlayer
             entries={pixel.entries}
             settings={pixel.settings}
+            previewIds={previewIds}
             launch={pixel.launch}
             onExit={endLab}
           />

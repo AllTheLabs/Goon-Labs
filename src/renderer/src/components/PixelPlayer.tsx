@@ -15,10 +15,10 @@ import {
 import type { LabPrefs } from '../labPrefs'
 import type { LabRecap } from '../labRecap'
 import { recapCount } from '../labRecap'
-import { createPixelDetector, isDarkSkinRegion, isSkipDarkMaleBox, smoothBoxes } from '../pixelDetect'
+import { createPixelDetector, smoothBoxes } from '../pixelDetect'
 import type { PixelBox, PixelDetector } from '../pixelDetect'
 import { useTheme } from '../themes'
-import { mediaUrl } from '../utils'
+import { mediaUrl, previewUrl } from '../utils'
 import { ElementAudioTap } from '../elementAudioTap'
 import { useLabSession } from './LabSession'
 import {
@@ -35,6 +35,7 @@ import type { QueueEntry } from './QueueSetup'
 interface PixelPlayerProps {
   entries: QueueEntry[]
   settings: PixelSettings
+  previewIds?: Set<string>
   launch?: LabPrefs
   onExit: (recap: LabRecap) => void
 }
@@ -42,6 +43,8 @@ interface PixelPlayerProps {
 const CONTROLS_HIDE_MS = 2500
 const DETECT_MS = 110
 const HOLD_MS = 480
+/** Cap the mosaic canvas so 4K sources aren't copied at retina size every frame. */
+const MAX_DRAW_SIDE = 1920
 
 function contained(srcW: number, srcH: number, dstW: number, dstH: number): {
   x: number
@@ -82,7 +85,7 @@ function pixelate(
   ctx.imageSmoothingEnabled = true
 }
 
-export function PixelPlayer({ entries, settings, launch, onExit }: PixelPlayerProps) {
+export function PixelPlayer({ entries, settings, previewIds, launch, onExit }: PixelPlayerProps) {
   const { copy } = useTheme()
   const endRef = useRef<() => void>(() => {})
   const lab = useLabSession(copy.pixelPerfection, launch, () => endRef.current())
@@ -233,9 +236,15 @@ export function PixelPlayer({ entries, settings, launch, onExit }: PixelPlayerPr
       const stage = canvas.parentElement
       const cssW = stage?.clientWidth ?? window.innerWidth
       const cssH = stage?.clientHeight ?? window.innerHeight
-      const dpr = window.devicePixelRatio || 1
-      const pixelW = Math.max(1, Math.round(cssW * dpr))
-      const pixelH = Math.max(1, Math.round(cssH * dpr))
+      const dpr = Math.min(window.devicePixelRatio || 1, 1)
+      let pixelW = Math.max(1, Math.round(cssW * dpr))
+      let pixelH = Math.max(1, Math.round(cssH * dpr))
+      const drawLong = Math.max(pixelW, pixelH)
+      if (drawLong > MAX_DRAW_SIDE) {
+        const fit = MAX_DRAW_SIDE / drawLong
+        pixelW = Math.max(1, Math.round(pixelW * fit))
+        pixelH = Math.max(1, Math.round(pixelH * fit))
+      }
       if (canvas.width !== pixelW || canvas.height !== pixelH) {
         canvas.width = pixelW
         canvas.height = pixelH
@@ -259,13 +268,6 @@ export function PixelPlayer({ entries, settings, launch, onExit }: PixelPlayerPr
         for (const box of boxes) {
           if (box.kind === 'face' && !wantFaces) continue
           if (box.kind === 'nsfw' && !wantNsfw) continue
-          if (
-            skipDarkMaleRef.current &&
-            isSkipDarkMaleBox(box) &&
-            isDarkSkinRegion(video, box, srcW, srcH)
-          ) {
-            continue
-          }
           pixelate(
             ctx,
             scratch,
@@ -389,7 +391,7 @@ export function PixelPlayer({ entries, settings, launch, onExit }: PixelPlayerPr
           ref={videoRef}
           className="queue-video pixel-hidden"
           crossOrigin="anonymous"
-          src={mediaUrl(entry.item)}
+          src={previewIds?.has(entry.item.id) ? previewUrl(entry.item) : mediaUrl(entry.item)}
           autoPlay
           playsInline
           onPlaying={() => {

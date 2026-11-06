@@ -4,6 +4,7 @@ import type { MediaItem } from '../../../shared/types'
 import type { LabPrefs } from '../labPrefs'
 import { plural } from '../utils'
 import { LabTagPicker } from './LabTagPicker'
+import { LabSetupFrame } from './Mascot'
 import { defaultLabLaunch, LabStartToggles } from './LabStartToggles'
 
 export type TagMatch = 'any' | 'all'
@@ -62,8 +63,8 @@ export function ScrollerSetup({ videos, initialTags, onStart, onClose }: Scrolle
     )
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal scroller-setup" onClick={(e) => e.stopPropagation()}>
+    <LabSetupFrame onClose={onClose}>
+      <div className="modal scroller-setup">
         <header className="modal-header">
           <div className="modal-icon">
             <Clapperboard size={20} />
@@ -118,6 +119,6 @@ export function ScrollerSetup({ videos, initialTags, onStart, onClose }: Scrolle
           </>
         )}
       </div>
-    </div>
+    </LabSetupFrame>
   )
 }

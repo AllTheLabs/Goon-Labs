@@ -4,6 +4,7 @@ import type { MediaItem } from '../../../shared/types'
 import type { LabPrefs } from '../labPrefs'
 import { useTheme } from '../themes'
 import { plural } from '../utils'
+import { LabSetupFrame } from './Mascot'
 import { defaultLabLaunch, LabStartToggles } from './LabStartToggles'
 import type { QueueEntry } from './QueueSetup'
 import { LabTagPicker } from './LabTagPicker'
@@ -120,8 +121,8 @@ export function HypnoSetup({ videos, initialTags, onStart, onClose }: HypnoSetup
     })
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal queue-setup" onClick={(e) => e.stopPropagation()}>
+    <LabSetupFrame onClose={onClose}>
+      <div className="modal queue-setup">
         <header className="modal-header">
           <div className="modal-icon">
             <HypnoIcon size={20} />
@@ -291,6 +292,6 @@ export function HypnoSetup({ videos, initialTags, onStart, onClose }: HypnoSetup
           </>
         )}
       </div>
-    </div>
+    </LabSetupFrame>
   )
 }
